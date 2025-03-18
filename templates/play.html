@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}TriviaTribeAI - Play Trivia{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12">
+        <div class="play-card">
+            <h1>Play Trivia Tribe</h1>
+            {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    {{ error }}
+                </div>
+            {% endif %}
+            <div class="mb-4">
+                <h3>Create a New Game</h3>
+                <form action="/create_game" method="post">
+                    <div class="mb-3">
+                        <label for="username-create" class="form-label">Your Username</label>
+                        <input type="text" class="form-control" id="username-create" name="username" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Game</button>
+                </form>
+            </div>
+            
+            <hr>
+            
+            <div>
+                <h3>Join Existing Game</h3>
+                <form action="/join_game" method="post">
+                    <div class="mb-3">
+                        <label for="username-join" class="form-label">Your Username</label>
+                        <input type="text" class="form-control" id="username-join" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="game-id" class="form-label">Game ID</label>
+                        <input type="text" class="form-control" id="game-id" name="game_id" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">Join Game</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        window.switchToHomeMusic();
+    });
+</script>
+{% endblock %}
