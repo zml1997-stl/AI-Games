@@ -11,9 +11,6 @@
             <a href="{{ url_for('trivia_welcome') }}" class="btn btn-primary mb-2">Play Trivia</a>
             <a href="{{ url_for('sketchduel.lobby') }}" class="btn btn-success mb-2">Play SketchDuel</a>
         </div>
-        {% if not current_user.is_authenticated %}
-            <p>Login to save your progress: <a href="{{ url_for('login') }}">Login</a></p>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
