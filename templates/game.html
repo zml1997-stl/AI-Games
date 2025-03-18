@@ -1,6 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
+{% extends "base.html" %}
+
+{% block head %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trivia Tribe - {{ game_id }}</title>
@@ -113,11 +113,9 @@
             text-shadow: 0 0 4px rgba(0, 255, 255, 0.5);
         }
     </style>
-</head>
-<body>
-    <header class="brand-header">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Trivia Tribe Logo">
-    </header>
+{% endblock %}
+
+{% block content %}
     <div class="container">
         <div class="row justify-content-center mt-2">
             <div class="col-12">
@@ -287,23 +285,6 @@
         <div id="chat-messages" class="chat-messages"></div>
         <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." maxlength="100">
     </div>
-
-    <footer class="footer mt-auto py-3 bg-dark text-white custom-footer">
-        <div class="container">
-            <div class="row">
-                <div class="col-12">
-                    <p class="text-white-50 small disclaimer custom-disclaimer">
-                        <strong>AI Disclaimer:</strong> Trivia Tribe utilizes AI to generate random trivia questions. While we strive for accuracy, some questions or answers may be incorrect or unverified. This game is intended for entertainment purposes only. For factual accuracy, consult reliable sources.
-                    </p>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-12">
-                    <span class="text-white-50">© 2025 Trivia Tribe by ZML. All rights reserved.</span>
-                </div>
-            </div>
-        </div>
-    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ url_for('static', filename='music.js') }}"></script>
@@ -1185,5 +1166,4 @@
             unreadCountBadge.style.display = count > 0 ? 'inline' : 'none';
         }
     </script>
-</body>
-</html>
+{% endblock %}
