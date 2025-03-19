@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
-from ..app import db, socketio, genai, GEMINI_API_KEY
+from app import db, socketio, genai, GEMINI_API_KEY  # Changed to absolute import
 from .models import SketchDuelRoom, SketchDuelGameState
 import random
 import string
@@ -28,7 +28,7 @@ def generate_drawing_prompt():
     {
       "prompt": "string"
     }
-    """
+    ### """
     response = model.generate_content(prompt)
     cleaned_text = response.text.strip().replace('json', '').replace('```', '').strip()
     try:
