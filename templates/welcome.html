@@ -2,65 +2,86 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to Trivia Tribe</title>
+    <meta name="viewport"="width=device-width, initial-scale=1.0">
+    <title>SketchDuel - Welcome</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <header class="brand-header">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Trivia Tribe Logo">
+        <img src="{{ url_for('static', filename='images/sketchduel-logo.png') }}" alt="SketchDuel Logo">
     </header>
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-12">
-                <div class="welcome-card">
-                    <h1>Welcome to Trivia Tribe!</h1>
-                    <p>
-                        Welcome to Trivia Tribe, the ultimate brain-busting showdown where quick wits and wild guesses reign supreme! Here’s the deal: you and your crew (up to 10 players) jump into a game room with a snazzy four-letter code. One of you is the host who kicks things off, and then it’s go-time. Each round, a player picks a topic—anything from '80s nostalgia' to 'space exploration'—or hits the Random Topic button for a surprise twist. Boom, powered with Google Gemini AI, a trivia question pops up with four options, and everyone’s got 30 seconds to lock in an answer. Nail it, and you snag a point; flub it, and you’re just keeping the vibes alive. After each round, the next player steps up, and we roll until someone hits 15 points—or you all decide to call it a night with bragging rights on the line. Chat, laugh, and flex your obscure knowledge in real-time. Ready to dominate? Let’s get this trivia party started!
-                    </p>
-                    <a href="{{ url_for('play') }}" class="animated-btn">Start Playing Now</a>
-                </div>
+
+    <div class="container mt-3">
+        <div class="card welcome-card">
+            <div class="card-header bg-light">
+                <h1>Welcome to SketchDuel!</h1>
+                <p>Game ID: <span id="game-id">{{ game_id }}</span></p>
             </div>
+            <div class="card-body">
+                <h2>Get ready to draw and guess!</h2>
+                <p>Share the Game ID with your friends so they can join. When everyone’s here, the host can start the game.</p>
+
+                <!-- Player List -->
+                <h3>Players (<span id="player-count">{{ players|length }}</span>)</h3>
+                <ul class="list-group mb-3" id="player-list">
+                    {% for player in players %}
+                    <li class="list-group-item bg-dark text-white">
+                        <span class="player-emoji">{{ player_emojis.get(player, '🎨') }}</span>{{ player }}
+                        {% if player == host %} <span class="badge bg-primary">Host</span>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <!-- Start Game Button (Host Only) -->
+                {% if is_host %}
+                <button id="start-game-btn" class="btn btn-success animated-btn">Start Drawing!</button>
+                {% else %}
+                <p>Waiting for the host to start the game...</p>
+                <div class="spinner-border text-primary" role="status"></div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="custom-disclaimer mt-3 mx-2">
+            <p><strong>Tip:</strong> One player will draw each round while others guess. Use the chat to throw out guesses or cheer on the drawer!</p>
         </div>
     </div>
 
-    <!-- Music Control Button -->
-    <button id="music-control-btn" class="music-control-btn">🎵</button>
-
-    <!-- Music Player Popup -->
-    <div id="music-player" class="music-player">
-        <div class="d-flex justify-content-between">
-            <button id="play-btn" class="btn btn-primary">▶️</button>
-            <button id="pause-btn" class="btn btn-primary">⏸️</button>
-            <button id="skip-btn" class="btn btn-primary">⏭️</button>
-            <button id="mute-btn" class="btn btn-primary">🔇</button>
-        </div>
-    </div>
-
-    <!-- Footer with Customized Disclaimer -->
-    <footer class="footer mt-auto py-4 bg-dark text-white custom-footer">
-        <div class="container">
-            <div class="row">
-                <div class="col-12">
-                    <p class="text-white-50 small disclaimer custom-disclaimer">
-                        <strong>AI Disclaimer:</strong> Trivia Tribe utilizes AI to generate random trivia questions. While we strive for accuracy, some questions or answers may be incorrect or unverified. This game is intended for entertainment purposes only. For factual accuracy, consult reliable sources.
-                    </p>
-                </div>
-            </div>
-            <div class="row">
-                <div class="col-12">
-                    <span class="text-white-50">© 2025 Trivia Tribe by ZML. All rights reserved.</span>
-                </div>
-            </div>
+    <!-- Footer -->
+    <footer class="custom-footer mt-4">
+        <div class="container text-center">
+            <p class="mb-0">© 2025 SketchDuel. All rights reserved.</p>
+            <p class="text-white-50">Built with creativity and a lot of doodles!</p>
         </div>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='music.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            window.switchToHomeMusic();
+        const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
+        const gameId = "{{ game_id }}";
+
+        socket.on('player_joined', (data) => {
+            document.getElementById('player-count').textContent = data.players.length;
+            const playerList = document.getElementById('player-list');
+            playerList.innerHTML = '';
+            data.players.forEach(player => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item bg-dark text-white';
+                li.innerHTML = `<span class="player-emoji">🎨</span>${player}` + 
+                               (player === "{{ host }}" ? ' <span class="badge bg-primary">Host</span>' : '');
+                playerList.appendChild(li);
+            });
+        });
+
+        socket.on('game_started', (data) => {
+            window.location.href = `/game/${gameId}`;
+        });
+
+        document.getElementById('start-game-btn')?.addEventListener('click', () => {
+            socket.emit('start_game', { game_id: gameId });
         });
     </script>
 </body>
