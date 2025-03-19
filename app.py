@@ -347,8 +347,8 @@ def cleanup_inactive_games():
 
 socketio.start_background_task(cleanup_inactive_games)
 
-# Import SketchDuel app
-from sketchduel import app as sketchduel_app
+# Import SketchDuel blueprint
+from sketchduel import sketchduel_app  # Import the blueprint object, not the app
 
 # Register SketchDuel blueprint
 app.register_blueprint(sketchduel_app, url_prefix='/sketchduel')
