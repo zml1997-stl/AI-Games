@@ -1,89 +1,49 @@
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 
 db = SQLAlchemy()
-migrate = Migrate()
 
 class Game(db.Model):
     __tablename__ = 'games'
-    id = db.Column(db.String(4), primary_key=True)
-    host = db.Column(db.String(50), nullable=False)
-    status = db.Column(db.String(20), default='waiting')
-    current_player_index = db.Column(db.Integer, default=0)
-    current_question = db.Column(db.JSON)
-    question_start_time = db.Column(db.DateTime)
-    last_activity = db.Column(db.DateTime, default=db.func.now())
-
-    players = db.relationship('Player', backref='game', lazy=True, cascade='all, delete-orphan')
-    questions = db.relationship('Question', backref='game', lazy=True, cascade='all, delete-orphan')
-    answers = db.relationship('Answer', backref='game', lazy=True, cascade='all, delete-orphan')
-    ratings = db.relationship('Rating', backref='game', lazy=True, cascade='all, delete-orphan')
-
-    def __repr__(self):
-        return f'<Game {self.id}>'
+    id = db.Column(db.String(6), primary_key=True)  # Game ID (e.g., ABC123)
+    host = db.Column(db.String(50), nullable=False)  # Host player name
+    started = db.Column(db.Boolean, default=False)  # Whether the game has started
+    round_number = db.Column(db.Integer, default=0)  # Current round number
+    created_at = db.Column(db.DateTime, default=db.func.now())  # Creation timestamp
+    
+    players = db.relationship('Player', backref='game', lazy=True)  # One-to-many with players
+    rounds = db.relationship('Round', backref='game', lazy=True)   # One-to-many with rounds
 
 class Player(db.Model):
     __tablename__ = 'players'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    game_id = db.Column(db.String(4), db.ForeignKey('games.id'), nullable=False)
-    username = db.Column(db.String(50), nullable=False)
-    score = db.Column(db.Integer, default=0)
-    emoji = db.Column(db.String(10))
-    disconnected = db.Column(db.Boolean, default=False)
-    sid = db.Column(db.String(120), nullable=True)  # Added for Socket.IO session ID
+    game_id = db.Column(db.String(6), db.ForeignKey('games.id'), nullable=False)  # Foreign key to Game
+    name = db.Column(db.String(50), nullable=False)  # Player name
+    score = db.Column(db.Integer, default=0)  # Total score
+    
+    __table_args__ = (db.UniqueConstraint('game_id', 'name', name='unique_player_per_game'),)
 
-    answers = db.relationship('Answer', backref='player', lazy=True, cascade='all, delete-orphan')
-    ratings = db.relationship('Rating', backref='player', lazy=True, cascade='all, delete-orphan')
-
-    def __repr__(self):
-        return f'<Player {self.username} in Game {self.game_id}>'
-
-class Topic(db.Model):
-    __tablename__ = 'topics'
+class Round(db.Model):
+    __tablename__ = 'rounds'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    normalized_name = db.Column(db.String(255), unique=True, nullable=False)
+    game_id = db.Column(db.String(6), db.ForeignKey('games.id'), nullable=False)  # Foreign key to Game
+    round_number = db.Column(db.Integer, nullable=False)  # Round number (1-5)
+    drawer = db.Column(db.String(50), nullable=False)  # Player name of the Drawer
+    prompt = db.Column(db.String(100), nullable=False)  # Drawing prompt
+    start_time = db.Column(db.DateTime, default=db.func.now())  # Round start time
+    end_time = db.Column(db.DateTime, nullable=True)  # Round end time
+    
+    guesses = db.relationship('Guess', backref='round', lazy=True)  # One-to-many with guesses
 
-    questions = db.relationship('Question', backref='topic', lazy=True, cascade='all, delete-orphan')
-    ratings = db.relationship('Rating', backref='topic', lazy=True, cascade='all, delete-orphan')
-
-    def __repr__(self):
-        return f'<Topic {self.normalized_name}>'
-
-class Question(db.Model):
-    __tablename__ = 'questions'
+class Guess(db.Model):
+    __tablename__ = 'guesses'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    game_id = db.Column(db.String(4), db.ForeignKey('games.id'), nullable=False)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topics.id'), nullable=False)
-    question_text = db.Column(db.Text, nullable=False)
-    answer_text = db.Column(db.Text, nullable=False)
+    round_id = db.Column(db.Integer, db.ForeignKey('rounds.id'), nullable=False)  # Foreign key to Round
+    player_name = db.Column(db.String(50), nullable=False)  # Player who made the guess
+    guess_text = db.Column(db.String(100), nullable=False)  # Guess text
+    timestamp = db.Column(db.DateTime, default=db.func.now())  # When the guess was made
+    correct = db.Column(db.Boolean, default=False)  # Whether the guess was correct
 
-    answers = db.relationship('Answer', backref='question', lazy=True, cascade='all, delete-orphan')
-
-    def __repr__(self):
-        return f'<Question {self.id} for Game {self.game_id}>'
-
-class Answer(db.Model):
-    __tablename__ = 'answers'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    game_id = db.Column(db.String(4), db.ForeignKey('games.id'), nullable=False)
-    player_id = db.Column(db.Integer, db.ForeignKey('players.id'), nullable=False)
-    question_id = db.Column(db.Integer, db.ForeignKey('questions.id'), nullable=False)
-    answer = db.Column(db.String(255))
-
-    def __repr__(self):
-        return f'<Answer by Player {self.player_id} for Question {self.question_id}>'
-
-class Rating(db.Model):
-    __tablename__ = 'ratings'
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    game_id = db.Column(db.String(4), db.ForeignKey('games.id'), nullable=False)
-    player_id = db.Column(db.Integer, db.ForeignKey('players.id'), nullable=False)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topics.id'), nullable=False)
-    rating = db.Column(db.Integer, nullable=False)  # 1 = Like, 0 = Dislike
-
-    __table_args__ = (
-        db.UniqueConstraint('game_id', 'player_id', 'topic_id', name='unique_rating_per_game_player_topic'),
-    )
-
-    def __repr__(self):
-        return f'<Rating {"Like" if self.rating else "Dislike"} by Player {self.player_id} for Topic {self.topic_id}>'
+def init_db(app):
+    db.init_app(app)
+    with app.app_context():
+        db.create_all()
