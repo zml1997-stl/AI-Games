@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from app import db, socketio, genai, GEMINI_API_KEY
-from models import SketchDuelRoom, SketchDuelGameState  # Updated import to root-level models.py
+from .models import SketchDuelRoom, SketchDuelGameState  # Relative import from sketchduel/models.py
 import random
 import string
 import json
