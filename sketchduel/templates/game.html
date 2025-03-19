@@ -216,6 +216,11 @@
         document.getElementById('timeLeft').textContent = data.time_left;
     });
 
+    // Handle redirect to scoreboard when game ends
+    socket.on('redirect', (data) => {
+        window.location.href = data.url;
+    });
+
     document.getElementById('submitGuess').addEventListener('click', () => {
         const guess = document.getElementById('guessInput').value;
         if (guess) {
