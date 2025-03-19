@@ -1,4 +1,4 @@
-from ..app import db  # Import the db object from the root app.py
+from app import db  # Changed to absolute import
 
 class SketchDuelRoom(db.Model):
     __tablename__ = 'sketchduel_rooms'
