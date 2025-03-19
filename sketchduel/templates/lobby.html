@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}SketchDuel - Lobby{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center">
+        <h1>Welcome to SketchDuel</h1>
+        <p>Create a new game or join an existing one!</p>
+
+        <!-- Create Game Form -->
+        <div class="mb-4">
+            <h3>Create a New Game</h3>
+            <form method="POST" action="{{ url_for('sketchduel.lobby') }}">
+                <button type="submit" class="btn btn-primary">Create Room</button>
+            </form>
+        </div>
+
+        <!-- Join Game Form -->
+        <div class="mb-4">
+            <h3>Join an Existing Game</h3>
+            <form method="POST" action="">
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" name="room_code" placeholder="Enter Room Code" required>
+                    <button type="submit" class="btn btn-success" formaction="{{ url_for('sketchduel.join_room_route', room_code='') }}">Join Room</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Error Message -->
+        {% if error %}
+        <div class="alert alert-danger" role="alert">
+            {{ error }}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
