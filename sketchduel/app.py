@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
-from app import db, socketio, genai, GEMINI_API_KEY  # Changed to absolute import
+from app import db, socketio, genai, GEMINI_API_KEY  # Absolute import
 from .models import SketchDuelRoom, SketchDuelGameState
 import random
 import string
