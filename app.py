@@ -28,6 +28,7 @@ random_click_counters = {}
 recent_random_topics = {}
 unread_messages = {}
 
+# Initialize Flask app
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -346,6 +347,13 @@ def cleanup_inactive_games():
 
 socketio.start_background_task(cleanup_inactive_games)
 
+# Import SketchDuel app
+from sketchduel import app as sketchduel_app
+
+# Register SketchDuel blueprint
+app.register_blueprint(sketchduel_app, url_prefix='/sketchduel')
+
+# Existing Trivia Routes
 @app.route('/')
 def welcome():
     game_id = session.get('game_id')
@@ -544,7 +552,7 @@ def handle_join_game_room(data):
             join_room(game_id)
             players = Player.query.filter_by(game_id=game_id).all()
             current_player = Player.query.filter_by(game_id=game_id).offset(game.current_player_index).first() if game.status == 'in_progress' and Player.query.filter_by(game_id=game_id).count() > game.current_player_index else None
-            socketio.emit('player_rejoined', {'username': username, 'players': [p.username for p in players], 'scores': {p.username: p.score for p in players}, 'player_emojis': {p.username: p.emoji for p in players}, 'status': game.status, 'current_player': current_player.username if current_player else None, 'current_question': game.current_question}, room=game_id)
+            socketio.emit('player_rejoined', {'username': username, 'players': [p.username for p in players], 'scores': {p.username: p.score for p in players}, 'player_emojis': {p.username: p.emoji for p in Player.query.filter_by(game_id=game_id).all()}, 'status': game.status, 'current_player': current_player.username if current_player else None, 'current_question': game.current_question}, room=game_id)
         elif game.status == 'waiting' and Player.query.filter_by(game_id=game_id).count() < 10:
             available_emojis = [e for e in PLAYER_EMOJIS if e not in [p.emoji for p in Player.query.filter_by(game_id=game_id).all()]]
             new_player = Player(game_id=game_id, username=username, score=0, emoji=random.choice(available_emojis) if available_emojis else random.choice(PLAYER_EMOJIS), disconnected=False, sid=request.sid)
@@ -552,7 +560,7 @@ def handle_join_game_room(data):
             db.session.commit()
             join_room(game_id)
             players = Player.query.filter_by(game_id=game_id).all()
-            socketio.emit('player_joined', {'username': username, 'players': [p.username for p in players], 'player_emojis': {p.username: p.emoji for p in players}}, room=game_id)
+            socketio.emit('player_joined', {'username': username, 'players': [p.username for p in players], 'player_emojis': {p.username: p.emoji for p in Player.query.filter_by(game_id=game_id).all()}}, room=game_id)
         else:
             socketio.emit('error', {'message': 'Game is full or already started'}, to=request.sid)
         if game_id not in unread_messages:
@@ -577,7 +585,7 @@ def handle_start_game(data):
         players = Player.query.filter_by(game_id=game_id).all()
         current_player = players[game.current_player_index]
         logger.debug(f"Game {game_id}: Started by {username}, current_player={current_player.username}")
-        socketio.emit('game_started', {'current_player': current_player.username, 'players': [p.username for p in players], 'scores': {p.username: p.score for p in players}, 'player_emojis': {p.username: p.emoji for p in players}}, room=game_id)
+        socketio.emit('game_started', {'current_player': current_player.username, 'players': [p.username for p in players], 'scores': {p.username: p.score for p in players}, 'player_emojis': {p.username: p.emoji for p in Player.query.filter_by(game_id=game_id).all()}}, room=game_id)
         update_game_activity(game_id)
 
 @socketio.on('request_player_top_topics')
