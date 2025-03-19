@@ -1,1169 +1,352 @@
-{% extends "base.html" %}
-
-{% block head %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trivia Tribe - {{ game_id }}</title>
+    <title>SketchDuel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <audio id="select-sound" src="{{ url_for('static', filename='select.mp3') }}" preload="auto"></audio>
-    <audio id="submit-sound" src="{{ url_for('static', filename='submit.mp3') }}" preload="auto"></audio>
-    <audio id="correct-sound" src="{{ url_for('static', filename='correct.mp3') }}" preload="auto"></audio>
-    <audio id="wrong-sound" src="{{ url_for('static', filename='wrong.mp3') }}" preload="auto"></audio>
-    <audio id="round-end-sound" src="{{ url_for('static', filename='round_end.mp3') }}" preload="auto"></audio>
-    <style>
-        .chat-box { 
-            display: none; 
-            position: fixed; 
-            bottom: 60px; 
-            right: 20px; 
-            width: 300px; 
-            max-height: 400px; 
-            background: white; 
-            border: 1px solid #ccc; 
-            border-radius: 5px; 
-            box-shadow: 0 0 10px rgba(0,0,0,0.2); 
-        }
-        .chat-box.active { display: block; }
-        .chat-messages { 
-            max-height: 300px; 
-            overflow-y: auto; 
-            padding: 10px; 
-        }
-        .chat-input { 
-            width: 100%; 
-            padding: 8px; 
-            border-top: 1px solid #ccc; 
-            border-radius: 0 0 5px 5px; 
-        }
-        .chat-control-btn { 
-            position: fixed; 
-            bottom: 20px; 
-            right: 20px; 
-            z-index: 1000; 
-        }
-        .music-control-btn { 
-            position: fixed; 
-            bottom: 20px; 
-            left: 20px; 
-            z-index: 1000; 
-        }
-        .correct-answer { background-color: #d4edda; }
-        .incorrect-answer { background-color: #f8d7da; }
-        .emoji-btn { font-size: 1.5rem; }
-        .error-message { 
-            color: #721c24; 
-            background-color: #f8d7da; 
-            border: 1px solid #f5c6cb; 
-            padding: 10px; 
-            border-radius: 5px; 
-            margin-top: 10px; 
-            display: none; 
-        }
-        .ptt-control-btn {
-            position: fixed;
-            bottom: 10px;
-            left: 65px;
-            width: 35px;
-            height: 35px;
-            background-color: #FF0000;
-            border: none;
-            border-radius: 50%;
-            color: #2C1A3B;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 8px rgba(255, 0, 0, 0.5);
-            z-index: 1000;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-            user-select: none;
-        }
-        .ptt-control-btn:hover {
-            background-color: #CC0000;
-        }
-        .ptt-control-btn.active {
-            background-color: #00FF00;
-            box-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
-        }
-        .ptt-control-btn.active:hover {
-            background-color: #00CC00;
-        }
-        .speaking-indicator {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            background-color: #5A3F73;
-            border-radius: 8px;
-            padding: 0.5rem;
-            box-shadow: 0 0 8px rgba(0, 255, 255, 0.2);
-            z-index: 1001;
-            color: #F5F5F5;
-            font-size: 0.9rem;
-        }
-        .speaking-indicator .player {
-            display: flex;
-            align-items: center;
-            margin: 0.2rem 0;
-        }
-        .speaking-indicator .player.speaking {
-            color: #00FFFF;
-            text-shadow: 0 0 4px rgba(0, 255, 255, 0.5);
-        }
-    </style>
-{% endblock %}
+</head>
+<body>
+    <header class="brand-header">
+        <img src="{{ url_for('static', filename='images/sketchduel-logo.png') }}" alt="SketchDuel Logo">
+    </header>
 
-{% block content %}
-    <div class="container">
-        <div class="row justify-content-center mt-2">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <div class="d-flex justify-content-between align-items-center flex-wrap">
-                            <h2 class="mb-0">Trivia Tribe</h2>
-                            <div>
-                                <span class="badge bg-info">Game ID: <span id="game-id-display">{{ game_id }}</span></span>
-                                <span id="connection-status" class="badge bg-warning ms-2">Connecting...</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="card-body" style="padding-bottom: 3rem;">
-                        <div id="waiting-lobby" class="text-center">
-                            <h3>Waiting for Players</h3>
-                            <p>Share the Game ID with friends to join!</p>
-                            <div class="player-list mb-3">
-                                <h4>Players:</h4>
-                                <ul id="player-list" class="list-group">
-                                    <!-- Players will be added here dynamically -->
-                                </ul>
-                            </div>
-                            {% if is_host %}
-                            <button id="start-game-btn" class="btn btn-success">Start Game</button>
-                            <div id="start-game-loading" class="text-center mt-2" style="display: none;">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Starting game...</span>
-                                </div>
-                                <p>Starting game...</p>
-                            </div>
-                            {% else %}
-                            <p>Waiting for host to start the game...</p>
-                            {% endif %}
-                        </div>
-                        
-                        <div id="topic-selection" style="display: none;">
-                            <h3>Select a Topic</h3>
-                            <p>Choose a topic for the next question!</p>
-                            <div class="mb-2">
-                                <input type="text" id="topic-input" class="form-control" placeholder="Enter a topic (e.g., Science, History, Movies)">
-                            </div>
-                            <div class="d-grid gap-2 d-md-flex justify-content-md-center">
-                                <button id="submit-topic-btn" class="btn btn-primary">Submit Topic</button>
-                                <button id="random-topic-btn" class="btn btn-secondary">Random Topic</button>
-                            </div>
-                            <div id="topic-error" class="error-message"></div>
-                        </div>
-                        
-                        <div id="question-display" style="display: none;">
-                            <div class="text-center mb-3">
-                                <span class="badge bg-secondary mb-2">Topic: <span id="topic-display"></span></span>
-                                <h3 id="question-text" class="mb-2"></h3>
-                                <div class="progress mb-2">
-                                    <div id="timer-progress" class="progress-bar bg-danger" role="progressbar" style="width: 100%"></div>
-                                </div>
-                            </div>
-                            
-                            <div class="answer-section">
-                                <div class="mb-2">
-                                    <label class="form-label">Select an Answer:</label>
-                                    <div class="list-group">
-                                        <button id="option-a" class="list-group-item list-group-item-action" data-prefix="A)"> <span id="option-a-text"></span></button>
-                                        <button id="option-b" class="list-group-item list-group-item-action" data-prefix="B)"> <span id="option-b-text"></span></button>
-                                        <button id="option-c" class="list-group-item list-group-item-action" data-prefix="C)"> <span id="option-c-text"></span></button>
-                                        <button id="option-d" class="list-group-item list-group-item-action" data-prefix="D)"> <span id="option-d-text"></span></button>
-                                    </div>
-                                </div>
-                                <button id="submit-answer-btn" class="btn btn-primary">Submit Answer</button>
-                            </div>
-                            
-                            <div class="waiting-for-answers mt-3" style="display: none;">
-                                <p id="waiting-text">Waiting for other players to answer...</p>
-                                <div class="progress">
-                                    <div id="answer-progress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                </div>
-                                <ul id="answered-players" class="list-group mt-2">
-                                    <!-- Players who answered will be added here dynamically -->
-                                </ul>
-                            </div>
-                        </div>
-                        
-                        <div id="results-display" style="display: none;">
-                            <h3 class="text-center mb-3">Round Results</h3>
-                            
-                            <div class="card mb-3">
-                                <div class="card-header bg-info">
-                                    <h4 class="mb-0">Correct Answer</h4>
-                                </div>
-                                <div class="card-body">
-                                    <span class="badge bg-secondary mb-2">Topic: <span id="results-topic-display"></span></span>
-                                    <p id="results-question-text" class="mb-2"></p>
-                                    <p id="correct-answer" class="lead"></p>
-                                    <p id="answer-explanation" class="fst-italic"></p>
-                                </div>
-                            </div>
-                            
-                            <div class="card mb-3">
-                                <div class="card-header bg-light">
-                                    <h4 class="mb-0">Player Answers</h4>
-                                </div>
-                                <div class="card-body">
-                                    <ul id="player-answers" class="list-group">
-                                        <!-- Player answers will be added here dynamically -->
-                                    </ul>
-                                </div>
-                            </div>
-                            
-                            <!-- Feedback Form -->
-                            <div id="feedback-form" class="card mb-3" style="display: none;">
-                                <div class="card-header bg-warning">
-                                    <h4 class="mb-0">Rate This Topic</h4>
-                                </div>
-                                <div class="card-body text-center">
-                                    <p>Did you enjoy "<span id="feedback-topic-display"></span>"?</p>
-                                    <div class="d-flex justify-content-center gap-3">
-                                        <button type="button" class="emoji-btn feedback-btn" data-rating="true">👍</button>
-                                        <button type="button" class="emoji-btn feedback-btn" data-rating="false">👎</button>
-                                    </div>
-                                    <p id="feedback-submitted" class="mt-2" style="display: none;">Thanks for rating!</p>
-                                </div>
-                            </div>
-                            
-                            <div id="next-round-info" class="text-center">
-                                <p>Next round starting soon...</p>
-                                <p>It will be <span id="next-player" class="fw-bold"></span>'s turn to select a topic.</p>
-                                <div class="progress">
-                                    <div id="next-round-progress" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="scoreboard" class="mt-3" style="display: none;">
-                            <h4>Scoreboard</h4>
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Player</th>
-                                        <th>Score</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="scores-table-body">
-                                    <!-- Scores will be added here dynamically -->
-                                </tbody>
-                            </table>
-                        </div>
+    <div class="container mt-3">
+        <!-- Game Card -->
+        <div class="card">
+            <div class="card-header bg-light">
+                <h1>SketchDuel</h1>
+                <p>Game ID: <span id="game-id">{{ game_id }}</span> | Players: <span id="player-count">{{ players|length }}</span></p>
+            </div>
+            <div class="card-body">
+                <!-- Drawing Prompt (Visible to Drawer Only) -->
+                <div id="prompt-section" style="display: none;">
+                    <h2>Your Word to Draw:</h2>
+                    <span id="prompt-display">{{ prompt if is_drawer else 'Waiting for the Drawer...' }}</span>
+                </div>
+
+                <!-- Drawing Canvas (Visible to Drawer) -->
+                <div id="drawer-section" style="display: none;">
+                    <canvas id="drawing-canvas"></canvas>
+                    <div class="drawing-tools">
+                        <button class="btn btn-primary" id="color-black">⬛</button>
+                        <button class="btn btn-primary" id="color-red">🟥</button>
+                        <button class="btn btn-primary" id="color-blue">🟦</button>
+                        <button class="btn btn-primary" id="erase">✖️</button>
+                        <button class="btn btn-success" id="clear-canvas">🗑️</button>
                     </div>
                 </div>
+
+                <!-- Guess Section (Visible to Guessers) -->
+                <div id="guesser-section" style="display: none;">
+                    <h2>Guess the Drawing!</h2>
+                    <canvas id="viewer-canvas" style="background-color: #FFFFFF;"></canvas>
+                    <div class="guess-section">
+                        <input type="text" class="form-control" id="guess-input" placeholder="Type your guess here">
+                        <button class="btn btn-primary mt-2" id="submit-guess">Submit Guess</button>
+                    </div>
+                </div>
+
+                <!-- Waiting State -->
+                <div id="waiting-state" class="waiting-for-guess">
+                    <h3>Waiting for the game to start...</h3>
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+
+                <!-- Correct Guess Display -->
+                <div id="correct-guess" style="display: none;"></div>
+
+                <!-- Timer -->
+                <div class="progress mt-2">
+                    <div class="progress-bar" id="round-timer" role="progressbar" style="width: 100%;"></div>
+                </div>
+
+                <!-- Next Round Info -->
+                <div id="next-round-info" style="display: none;">
+                    <p>Next round starts in <span id="countdown"></span> seconds...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scoreboard -->
+        <div class="card mt-3" id="scoreboard">
+            <div class="card-header bg-light">
+                <h3>Scoreboard</h3>
+            </div>
+            <div class="card-body">
+                <table class="table table-primary table-striped">
+                    <thead>
+                        <tr>
+                            <th>Player</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scoreboard-body">
+                        {% for player in players %}
+                        <tr>
+                            <td><span class="player-emoji">{{ player_emojis.get(player, '🎨') }}</span>{{ player }}</td>
+                            <td>{{ scores.get(player, 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
 
-    <div id="leave-game-container" class="text-center mb-2" style="display: none;">
-        <button id="leave-game-btn" class="btn btn-danger">Leave Game</button>
+    <!-- Music Control Button -->
+    <button class="music-control-btn" id="music-control-btn">🎵</button>
+    <div class="music-player" id="music-player">
+        <div class="d-flex justify-content-around">
+            <button class="btn" id="play-music">▶️</button>
+            <button class="btn" id="pause-music">⏸️</button>
+            <button class="btn btn-muted" id="mute-music">🔇</button>
+        </div>
     </div>
 
-    <button id="mute-btn" class="music-control-btn">🔇</button>
-    <button id="ptt-btn" class="ptt-control-btn">🎤</button>
-    <div id="speaking-indicator" class="speaking-indicator">
-        <!-- Player audio elements will be added dynamically -->
+    <!-- Chat Control Button -->
+    <button class="chat-control-btn" id="chat-control-btn">💬</button>
+    <div class="chat-box" id="chat-box">
+        <div class="chat-messages" id="chat-messages"></div>
+        <input type="text" class="chat-input" id="chat-input" placeholder="Type a message or guess...">
     </div>
-    
-    <!-- Chat Button and Popup -->
-    <button id="chat-btn" class="chat-control-btn">💬 <span id="unread-count" class="badge bg-danger" style="display: none;">0</span></button>
-    <div id="chat-box" class="chat-box">
-        <div id="chat-messages" class="chat-messages"></div>
-        <input type="text" id="chat-input" class="chat-input" placeholder="Type a message..." maxlength="100">
-    </div>
+
+    <!-- Footer -->
+    <footer class="custom-footer mt-4">
+        <div class="container text-center">
+            <p class="mb-0">© 2025 SketchDuel. All rights reserved.</p>
+            <p class="text-white-50">Built with creativity and a lot of doodles!</p>
+        </div>
+    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='music.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/socket.io.min.js') }}"></script>
     <script>
+        const socket = io.connect(location.protocol + '//' + document.domain + ':' + location.port);
         const gameId = "{{ game_id }}";
-        const username = "{{ username }}";
-        const isHost = {{ 'true' if is_host else 'false' }};
-        let socket;
-        let answeredPlayers = new Set();
-        let timerInterval;
-        let timeLeft = 30;
-        let selectedAnswer = null;
-        let playerEmojis = {};
-        let reconnectAttempts = 0;
-        let maxReconnectAttempts = 10;
-        let currentTopicId = null;
-        let currentTopic = null;
-        let currentQuestionId = null;
-        let localStream;
-        let peerConnections = {};
-        let playersInRoom = [];
-        let isPTTPressed = false;
-        let isVoiceInitialized = false;
-        let isAudioUnlocked = false;
+        const playerName = "{{ player_name }}";
+        let isDrawer = {{ 'true' if is_drawer else 'false' }};
 
-        const waitingLobby = document.getElementById('waiting-lobby');
-        const topicSelection = document.getElementById('topic-selection');
-        const questionDisplay = document.getElementById('question-display');
-        const resultsDisplay = document.getElementById('results-display');
-        const scoreboard = document.getElementById('scoreboard');
-        const leaveGameContainer = document.getElementById('leave-game-container');
-        const timerProgress = document.getElementById('timer-progress');
-        const waitingForAnswers = document.querySelector('.waiting-for-answers');
-        const connectionStatus = document.getElementById('connection-status');
-        const startGameBtn = document.getElementById('start-game-btn');
-        const startGameLoading = document.getElementById('start-game-loading');
-        const feedbackForm = document.getElementById('feedback-form');
-        const chatBtn = document.getElementById('chat-btn');
-        const chatBox = document.getElementById('chat-box');
-        const chatMessages = document.getElementById('chat-messages');
-        const chatInput = document.getElementById('chat-input');
-        const unreadCountBadge = document.getElementById('unread-count');
-        const topicErrorDiv = document.getElementById('topic-error');
-        const pttBtn = document.getElementById('ptt-btn');
-        const speakingIndicator = document.getElementById('speaking-indicator');
+        // Canvas Setup
+        const drawingCanvas = document.getElementById('drawing-canvas');
+        const viewerCanvas = document.getElementById('viewer-canvas');
+        const ctx = drawingCanvas.getContext('2d');
+        const viewerCtx = viewerCanvas.getContext('2d');
+        let drawing = false;
+        let currentColor = 'black';
+        let erasing = false;
 
-        const unmuteBtn = document.createElement('button');
-        unmuteBtn.id = 'unmute-btn';
-        unmuteBtn.className = 'btn btn-warning';
-        unmuteBtn.style.position = 'fixed';
-        unmuteBtn.style.bottom = '10px';
-        unmuteBtn.style.left = '110px';
-        unmuteBtn.style.zIndex = '1000';
-        unmuteBtn.textContent = '🔊 Unmute Voice Chat';
-        document.body.appendChild(unmuteBtn);
+        function resizeCanvas() {
+            drawingCanvas.width = drawingCanvas.offsetWidth;
+            drawingCanvas.height = drawingCanvas.offsetHeight;
+            viewerCanvas.width = drawingCanvas.width;
+            viewerCanvas.height = drawingCanvas.height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
 
-        document.addEventListener('DOMContentLoaded', function() {
-            connectToSocket();
-            setupEventListeners();
-            window.switchToHomeMusic();
-            initializeVoiceChat();
+        // Drawing Functions
+        drawingCanvas.addEventListener('mousedown', startDrawing);
+        drawingCanvas.addEventListener('mousemove', draw);
+        drawingCanvas.addEventListener('mouseup', stopDrawing);
+        drawingCanvas.addEventListener('touchstart', startDrawing);
+        drawingCanvas.addEventListener('touchmove', draw);
+        drawingCanvas.addEventListener('touchend', stopDrawing);
+
+        function startDrawing(e) {
+            if (!isDrawer) return;
+            drawing = true;
+            draw(e);
+        }
+
+        function draw(e) {
+            if (!drawing || !isDrawer) return;
+            e.preventDefault();
+            const rect = drawingCanvas.getBoundingClientRect();
+            const x = (e.clientX || e.touches[0].clientX) - rect.left;
+            const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+            ctx.lineWidth = erasing ? 20 : 5;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = erasing ? '#FFFFFF' : currentColor;
+
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+
+            socket.emit('draw', { game_id: gameId, x, y, color: currentColor, erase: erasing });
+        }
+
+        function stopDrawing() {
+            if (!isDrawer) return;
+            drawing = false;
+            ctx.beginPath();
+        }
+
+        // Drawing Tools
+        document.getElementById('color-black').addEventListener('click', () => { currentColor = 'black'; erasing = false; });
+        document.getElementById('color-red').addEventListener('click', () => { currentColor = 'red'; erasing = false; });
+        document.getElementById('color-blue').addEventListener('click', () => { currentColor = 'blue'; erasing = false; });
+        document.getElementById('erase').addEventListener('click', () => { erasing = true; });
+        document.getElementById('clear-canvas').addEventListener('click', () => {
+            ctx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            socket.emit('clear_canvas', { game_id: gameId });
         });
 
-        function showToast(message) {
-            const toast = document.createElement('div');
-            toast.style.position = 'fixed';
-            toast.style.bottom = '60px';
-            toast.style.left = '50%';
-            toast.style.transform = 'translateX(-50%)';
-            toast.style.backgroundColor = '#333';
-            toast.style.color = '#fff';
-            toast.style.padding = '10px 20px';
-            toast.style.borderRadius = '5px';
-            toast.style.zIndex = '1001';
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-
-        function hideAllSections() {
-            waitingLobby.style.display = 'none';
-            topicSelection.style.display = 'none';
-            questionDisplay.style.display = 'none';
-            resultsDisplay.style.display = 'none';
-            scoreboard.style.display = 'none';
-            feedbackForm.style.display = 'none';
-            document.getElementById('waiting-for-topic')?.remove();
-            document.getElementById('loading-question')?.remove();
-            document.getElementById('game-paused')?.remove();
-            topicErrorDiv.style.display = 'none';
-        }
-
-        function showError(message) {
-            topicErrorDiv.textContent = message;
-            topicErrorDiv.style.display = 'block';
-            setTimeout(() => topicErrorDiv.style.display = 'none', 5000);
-        }
-
-        function connectToSocket() {
-            socket = io({
-                reconnection: true,
-                reconnectionAttempts: maxReconnectAttempts,
-                reconnectionDelay: 500,
-                reconnectionDelayMax: 2000,
-                randomizationFactor: 0.5
-            });
-
-            socket.on('connect', function() {
-                showToast('Connected to server');
-                reconnectAttempts = 0;
-                connectionStatus.textContent = 'Connected';
-                connectionStatus.className = 'badge bg-success ms-2';
-                socket.emit('join_game_room', { game_id: gameId, username: username });
-            });
-
-            socket.on('connect_error', function(error) {
-                showToast('Connection error');
-                connectionStatus.textContent = 'Connection Failed';
-                connectionStatus.className = 'badge bg-danger ms-2';
-            });
-
-            socket.on('reconnect', function(attempt) {
-                showToast(`Reconnected after ${attempt} attempts`);
-                connectionStatus.textContent = 'Connected';
-                connectionStatus.className = 'badge bg-success ms-2';
-                socket.emit('join_game_room', { game_id: gameId, username: username });
-            });
-
-            socket.on('reconnect_failed', function() {
-                showToast('Lost connection. Please refresh.');
-                connectionStatus.textContent = 'Disconnected';
-                connectionStatus.className = 'badge bg-danger ms-2';
-            });
-
-            socket.on('player_joined', function(data) {
-                updatePlayerList(data.players, data.player_emojis);
-                hideAllSections();
-                waitingLobby.style.display = 'block';
-                leaveGameContainer.style.display = 'block';
-                updateVoiceChatParticipants(data.players);
-            });
-
-            socket.on('player_left', function(data) {
-                updatePlayerList(data.players, data.player_emojis);
-                updateVoiceChatParticipants(data.players);
-            });
-
-            socket.on('player_rejoined', function(data) {
-                showToast(`${data.username} rejoined`);
-                updatePlayerList(data.players, data.player_emojis);
-                updateScoreboard(data.scores, data.player_emojis);
-                hideAllSections();
-                scoreboard.style.display = 'block';
-                leaveGameContainer.style.display = 'block';
-                updateVoiceChatParticipants(data.players);
-                if (data.status === 'in_progress') {
-                    if (data.current_player === username) {
-                        topicSelection.style.display = 'block';
-                        socket.emit('request_player_top_topics', { game_id: gameId, username: username });
-                    } else if (!data.current_question) {
-                        showWaitingForTopic(data.current_player);
-                    } else {
-                        showQuestion({
-                            question: data.current_question.question,
-                            options: data.current_question.options,
-                            topic: data.current_question.topic || 'Unknown',
-                            question_id: data.current_question.question_id
-                        });
-                    }
-                } else {
-                    waitingLobby.style.display = 'block';
-                }
-            });
-
-            socket.on('game_started', function(data) {
-                clearTimeout(startGameTimeout);
-                startGameBtn.disabled = false;
-                startGameLoading.style.display = 'none';
-                startGame(data);
-            });
-
-            socket.on('question_ready', function(data) {
-                showQuestion(data);
-            });
-
-            socket.on('player_answered', function(data) {
-                playerAnswered(data.username);
-            });
-
-            socket.on('round_results', function(data) {
-                showResults(data);
-            });
-
-            socket.on('request_feedback', function(data) {
-                currentTopicId = data.topic_id;
-                feedbackForm.style.display = 'block';
-                document.getElementById('feedback-topic-display').textContent = currentTopic;
-                document.getElementById('feedback-submitted').style.display = 'none';
-                document.querySelectorAll('.feedback-btn').forEach(btn => {
-                    btn.disabled = false;
-                    btn.classList.remove('active');
-                });
-            });
-
-            socket.on('game_ended', function(data) {
-                endGame(data);
-            });
-
-            socket.on('game_reset', function(data) {
-                resetGame(data);
-            });
-
-            socket.on('turn_skipped', function(data) {
-                showToast(`${data.disconnected_player}'s turn skipped`);
-                hideAllSections();
-                scoreboard.style.display = 'block';
-                if (data.next_player === username) {
-                    topicSelection.style.display = 'block';
-                    socket.emit('request_player_top_topics', { game_id: gameId, username: username });
-                } else {
-                    showWaitingForTopic(data.next_player);
-                }
-            });
-
-            socket.on('game_paused', function(data) {
-                showToast('Game paused');
-                hideAllSections();
-                const pausedDiv = document.createElement('div');
-                pausedDiv.id = 'game-paused';
-                pausedDiv.className = 'text-center my-4';
-                pausedDiv.innerHTML = `<h3>Game Paused</h3><p>${data.message}</p>`;
-                document.querySelector('.card-body').appendChild(pausedDiv);
-                scoreboard.style.display = 'block';
-            });
-
-            socket.on('player_top_topics', function(data) {
-                document.getElementById('topic-input').placeholder = data.placeholder;
-            });
-
-            socket.on('chat_message', function(data) {
-                addChatMessage(data.username, data.message);
-            });
-
-            socket.on('update_unread_count', function(data) {
-                updateUnreadCount(data.count);
-            });
-
-            socket.on('error', function(data) {
-                showToast(`Error: ${data.message}`);
-                if (data.message.includes("Could not generate a unique question") && topicSelection.style.display === 'none') {
-                    hideAllSections();
-                    scoreboard.style.display = 'block';
-                    topicSelection.style.display = 'block';
-                    showError(data.message);
-                    document.getElementById('topic-input').focus();
-                } else if (data.message.includes('Game not found')) {
-                    window.location.href = '/';
-                }
-            });
-
-            socket.on('voice_offer', async function(data) {
-                if (data.from !== username) {
-                    showToast(`Offer from ${data.from}`);
-                    await handleOffer(data.from, data.offer);
-                }
-            });
-
-            socket.on('voice_answer', async function(data) {
-                if (data.from !== username) {
-                    showToast(`Answer from ${data.from}`);
-                    await handleAnswer(data.from, data.answer);
-                }
-            });
-
-            socket.on('voice_candidate', async function(data) {
-                if (data.from !== username) {
-                    showToast(`Candidate from ${data.from}`);
-                    await handleCandidate(data.from, data.candidate);
-                }
-            });
-
-            socket.on('speaking_status', function(data) {
-                updateSpeakingIndicator(data.username, data.speaking);
-            });
-        }
-
-        let startGameTimeout;
-
-        function setupEventListeners() {
-            if (startGameBtn) {
-                startGameBtn.addEventListener('click', function() {
-                    startGameBtn.disabled = true;
-                    startGameLoading.style.display = 'block';
-                    socket.emit('start_game', { game_id: gameId, username: username });
-                    startGameTimeout = setTimeout(() => {
-                        startGameBtn.disabled = false;
-                        startGameLoading.style.display = 'none';
-                        showToast('Failed to start game. Try again.');
-                    }, 10000);
-                });
+        // Guess Submission
+        document.getElementById('submit-guess').addEventListener('click', () => {
+            const guess = document.getElementById('guess-input').value.trim();
+            if (guess) {
+                socket.emit('submit_guess', { game_id: gameId, player_name: playerName, guess });
+                document.getElementById('guess-input').value = '';
             }
-            document.getElementById('submit-topic-btn').addEventListener('click', function() {
-                const topic = document.getElementById('topic-input').value.trim();
-                socket.emit('select_topic', { game_id: gameId, username: username, topic: topic });
-                topicSelection.style.display = 'none';
-                showLoadingQuestion();
-            });
-            document.getElementById('random-topic-btn').addEventListener('click', function() {
-                socket.emit('select_topic', { game_id: gameId, username: username, topic: '' });
-                topicSelection.style.display = 'none';
-                showLoadingQuestion();
-            });
-            document.getElementById('option-a').addEventListener('click', function() { 
-                selectAnswer('A'); 
-                window.playSelectSound();
-            });
-            document.getElementById('option-b').addEventListener('click', function() { 
-                selectAnswer('B'); 
-                window.playSelectSound();
-            });
-            document.getElementById('option-c').addEventListener('click', function() { 
-                selectAnswer('C'); 
-                window.playSelectSound();
-            });
-            document.getElementById('option-d').addEventListener('click', function() { 
-                selectAnswer('D'); 
-                window.playSelectSound();
-            });
-            document.getElementById('submit-answer-btn').addEventListener('click', function() {
-                if (selectedAnswer) {
-                    socket.emit('submit_answer', { game_id: gameId, username: username, answer: selectedAnswer });
-                    window.playSubmitSound();
-                    disableAnswerButtons();
-                    document.getElementById('submit-answer-btn').disabled = true;
-                    if (document.getElementById('player-list').childElementCount > 1) {
-                        waitingForAnswers.style.display = 'block';
-                    }
-                }
-            });
-            document.getElementById('leave-game-btn').addEventListener('click', function() {
-                window.location.href = '/';
-            });
-            document.getElementById('mute-btn').addEventListener('click', window.muteToggle);
+        });
+        document.getElementById('guess-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') document.getElementById('submit-guess').click();
+        });
 
-            document.querySelectorAll('.feedback-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    const rating = this.getAttribute('data-rating') === 'true';
-                    socket.emit('submit_feedback', { 
-                        game_id: gameId, 
-                        username: username, 
-                        topic_id: currentTopicId, 
-                        rating: rating 
-                    });
-                    this.classList.add('active');
-                    document.getElementById('feedback-submitted').style.display = 'block';
-                    document.querySelectorAll('.feedback-btn').forEach(b => b.disabled = true);
-                });
-            });
+        // Socket Events
+        socket.on('player_joined', (data) => {
+            document.getElementById('player-count').textContent = data.players.length;
+            updateScoreboard(data.players, data.scores);
+        });
 
-            chatBtn.addEventListener('click', function() {
-                chatBox.classList.toggle('active');
-                if (chatBox.classList.contains('active')) {
-                    socket.emit('reset_unread_count', { game_id: gameId, username: username });
-                }
-            });
-
-            chatInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter' && chatInput.value.trim()) {
-                    socket.emit('send_chat_message', { 
-                        game_id: gameId, 
-                        username: username, 
-                        message: chatInput.value.trim() 
-                    });
-                    chatInput.value = '';
-                }
-            });
-
-            pttBtn.addEventListener('mousedown', startTalking);
-            pttBtn.addEventListener('mouseup', stopTalking);
-            pttBtn.addEventListener('mouseleave', stopTalking);
-            pttBtn.addEventListener('touchstart', startTalkingMobile);
-            pttBtn.addEventListener('touchend', stopTalking);
-            pttBtn.addEventListener('touchcancel', stopTalking);
-
-            unmuteBtn.addEventListener('click', unlockAudio);
-        }
-
-        async function unlockAudio() {
-            if (isAudioUnlocked) return;
-            showToast('Unlocking audio...');
-            const dummyAudio = new Audio();
-            dummyAudio.src = '/static/select.mp3';
-            dummyAudio.play()
-                .then(() => {
-                    showToast('Audio unlocked!');
-                    isAudioUnlocked = true;
-                    unmuteBtn.style.display = 'none';
-                    // Reset and rebuild all peer connections
-                    for (let peer in peerConnections) {
-                        peerConnections[peer].close();
-                        delete peerConnections[peer];
-                    }
-                    if (playersInRoom.length > 0) {
-                        updateVoiceChatParticipants(playersInRoom);
-                    }
-                    // Ensure streams play
-                    playersInRoom.forEach(player => {
-                        const audio = document.getElementById(`voice-${player}`);
-                        if (audio && audio.srcObject) {
-                            audio.play()
-                                .then(() => showToast(`Playing ${player}'s audio`))
-                                .catch(() => showToast(`Failed to play ${player}'s audio`));
-                        }
-                    });
-                })
-                .catch(err => showToast('Audio unlock failed. Try again.'));
-        }
-
-        async function initializeVoiceChat() {
-            if (isVoiceInitialized) return;
-            showToast('Initializing voice chat');
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                showToast('Mic access granted. Click 🔊 then hold 🎤 to talk.');
-                localStream.getAudioTracks()[0].enabled = false;
-                isVoiceInitialized = true;
-                if (playersInRoom.length > 0) {
-                    updateVoiceChatParticipants(playersInRoom);
-                }
-            } catch (err) {
-                showToast('Mic access denied. Voice chat disabled.');
-                pttBtn.style.backgroundColor = '#808080';
-                pttBtn.disabled = true;
-            }
-        }
-
-        function startTalking() {
-            if (!isVoiceInitialized) {
-                initializeVoiceChat();
-                return;
-            }
-            if (!isAudioUnlocked) {
-                showToast('Click 🔊 Unmute Voice Chat first!');
-                return;
-            }
-            if (localStream && !isPTTPressed) {
-                localStream.getAudioTracks()[0].enabled = true;
-                isPTTPressed = true;
-                pttBtn.classList.add('active');
-                showToast('Talking... Release to mute.');
-                socket.emit('speaking_status', { game_id: gameId, username: username, speaking: true });
-                playersInRoom.forEach(player => {
-                    const audio = document.getElementById(`voice-${player}`);
-                    if (audio && audio.srcObject) {
-                        audio.play()
-                            .then(() => showToast(`Playing ${player}'s audio`))
-                            .catch(() => showToast(`Failed to play ${player}'s audio`));
-                    }
-                });
-            }
-        }
-
-        function startTalkingMobile(event) {
-            event.preventDefault();
-            startTalking();
-        }
-
-        function stopTalking() {
-            if (localStream && isPTTPressed) {
-                localStream.getAudioTracks()[0].enabled = false;
-                isPTTPressed = false;
-                pttBtn.classList.remove('active');
-                socket.emit('speaking_status', { game_id: gameId, username: username, speaking: false });
-            }
-        }
-
-        async function updateVoiceChatParticipants(players) {
-            showToast(`Updating players: ${players.join(', ')}`);
-            playersInRoom = players.filter(p => p !== username);
-            speakingIndicator.innerHTML = playersInRoom.map(p => `
-                <div class="player" data-username="${p}">
-                    <span class="player-emoji">${playerEmojis[p]}</span>${p}
-                    <audio id="voice-${p}" autoplay></audio>
-                </div>
-            `).join('');
-
-            // Clean up stale connections
-            for (let peer in peerConnections) {
-                if (!playersInRoom.includes(peer)) {
-                    peerConnections[peer].close();
-                    delete peerConnections[peer];
-                    showToast(`Closed connection with ${peer}`);
-                }
-            }
-
-            if (isVoiceInitialized) {
-                for (let player of playersInRoom) {
-                    if (!peerConnections[player] || peerConnections[player].connectionState === 'closed' || peerConnections[player].connectionState === 'failed') {
-                        await createPeerConnection(player);
-                    } else if (peerConnections[player].connectionState !== 'connected') {
-                        // Restart if not connected
-                        peerConnections[player].close();
-                        delete peerConnections[player];
-                        await createPeerConnection(player);
-                    }
-                }
-            }
-        }
-
-        function updateSpeakingIndicator(player, isSpeaking) {
-            const playerEl = speakingIndicator.querySelector(`.player[data-username="${player}"]`);
-            if (playerEl) {
-                playerEl.classList.toggle('speaking', isSpeaking);
-            }
-        }
-
-        async function createPeerConnection(peerUsername) {
-            showToast(`Connecting to ${peerUsername}`);
-            const config = {
-                iceServers: [
-                    { urls: 'stun:stun.relay.metered.ca:80' },
-                    { urls: 'turn:global.relay.metered.ca:80', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' },
-                    { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' },
-                    { urls: 'turn:global.relay.metered.ca:443', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' },
-                    { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' }
-                ],
-                iceTransportPolicy: 'relay'
-            };
-            peerConnections[peerUsername] = new RTCPeerConnection(config);
-
-            if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    peerConnections[peerUsername].addTrack(track, localStream);
-                    showToast(`Added mic to ${peerUsername}`);
-                });
-            }
-
-            peerConnections[peerUsername].onicecandidate = event => {
-                if (event.candidate) {
-                    showToast(`Sending candidate to ${peerUsername}`);
-                    socket.emit('voice_candidate', { game_id: gameId, from: username, to: peerUsername, candidate: event.candidate });
-                }
-            };
-
-            peerConnections[peerUsername].ontrack = event => {
-                showToast(`Stream received from ${peerUsername}`);
-                const audio = document.getElementById(`voice-${peerUsername}`);
-                if (audio) {
-                    audio.srcObject = event.streams[0];
-                    audio.volume = 0.5;
-                    if (isAudioUnlocked) {
-                        audio.play()
-                            .then(() => showToast(`Playing ${peerUsername}'s audio`))
-                            .catch(() => showToast(`Failed to play ${peerUsername}'s audio`));
-                    } else {
-                        showToast(`Stream ready for ${peerUsername}. Click 🔊 to play.`);
-                    }
-                } else {
-                    showToast(`No audio element for ${peerUsername}`);
-                }
-            };
-
-            peerConnections[peerUsername].onconnectionstatechange = () => {
-                const state = peerConnections[peerUsername].connectionState;
-                showToast(`Connection with ${peerUsername}: ${state}`);
-                if (state === 'failed' || state === 'disconnected') {
-                    peerConnections[peerUsername].close();
-                    delete peerConnections[peerUsername];
-                    showToast(`Connection failed with ${peerUsername}`);
-                }
-            };
-
-            try {
-                const offer = await peerConnections[peerUsername].createOffer();
-                await peerConnections[peerUsername].setLocalDescription(offer);
-                socket.emit('voice_offer', { game_id: gameId, from: username, to: peerUsername, offer: offer });
-            } catch (err) {
-                showToast(`Error connecting to ${peerUsername}`);
-            }
-        }
-
-        async function handleOffer(from, offer) {
-            if (!peerConnections[from]) {
-                const config = {
-                    iceServers: [
-                        { urls: 'stun:stun.relay.metered.ca:80' },
-                        { urls: 'turn:global.relay.metered.ca:80', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' },
-                        { urls: 'turn:global.relay.metered.ca:80?transport=tcp', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' },
-                        { urls: 'turn:global.relay.metered.ca:443', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' },
-                        { urls: 'turns:global.relay.metered.ca:443?transport=tcp', username: '0284347a98a59a7761092e15', credential: 'Gurx7T74oANA9tmJ' }
-                    ],
-                    iceTransportPolicy: 'relay'
-                };
-                peerConnections[from] = new RTCPeerConnection(config);
-
-                if (localStream) {
-                    localStream.getTracks().forEach(track => {
-                        peerConnections[from].addTrack(track, localStream);
-                        showToast(`Added mic to ${from}`);
-                    });
-                }
-
-                peerConnections[from].onicecandidate = event => {
-                    if (event.candidate) {
-                        showToast(`Sending candidate to ${from}`);
-                        socket.emit('voice_candidate', { game_id: gameId, from: username, to: from, candidate: event.candidate });
-                    }
-                };
-
-                peerConnections[from].ontrack = event => {
-                    showToast(`Stream received from ${from}`);
-                    const audio = document.getElementById(`voice-${from}`);
-                    if (audio) {
-                        audio.srcObject = event.streams[0];
-                        audio.volume = 0.5;
-                        if (isAudioUnlocked) {
-                            audio.play()
-                                .then(() => showToast(`Playing ${from}'s audio`))
-                                .catch(() => showToast(`Failed to play ${from}'s audio`));
-                        } else {
-                            showToast(`Stream ready for ${from}. Click 🔊 to play.`);
-                        }
-                    } else {
-                        showToast(`No audio element for ${from}`);
-                    }
-                };
-
-                peerConnections[from].onconnectionstatechange = () => {
-                    const state = peerConnections[from].connectionState;
-                    showToast(`Connection with ${from}: ${state}`);
-                    if (state === 'failed' || state === 'disconnected') {
-                        peerConnections[from].close();
-                        delete peerConnections[from];
-                        showToast(`Connection failed with ${from}`);
-                    }
-                };
-            }
-
-            try {
-                await peerConnections[from].setRemoteDescription(new RTCSessionDescription(offer));
-                const answer = await peerConnections[from].createAnswer();
-                await peerConnections[from].setLocalDescription(answer);
-                socket.emit('voice_answer', { game_id: gameId, from: username, to: from, answer: answer });
-            } catch (err) {
-                showToast(`Error handling offer from ${from}`);
-            }
-        }
-
-        async function handleAnswer(from, answer) {
-            try {
-                await peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
-                showToast(`Answer set for ${from}`);
-            } catch (err) {
-                showToast(`Error handling answer from ${from}`);
-            }
-        }
-
-        async function handleCandidate(from, candidate) {
-            try {
-                if (peerConnections[from]) {
-                    await peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate));
-                    showToast(`Added candidate from ${from}`);
-                }
-            } catch (err) {
-                showToast(`Error adding candidate from ${from}`);
-            }
-        }
-
-        function updatePlayerList(players, emojis) {
-            playerEmojis = emojis;
-            const playerList = document.getElementById('player-list');
-            playerList.innerHTML = '';
-            players.forEach(player => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex justify-content-between align-items-center';
-                li.innerHTML = `<span class="player-emoji">${playerEmojis[player]}</span>${player}`;
-                if (player === username) {
-                    li.className += ' list-group-item-primary';
-                    li.innerHTML += ' <span class="badge bg-primary">You</span>';
-                }
-                playerList.appendChild(li);
-            });
-        }
-
-        function startGame(data) {
-            hideAllSections();
-            scoreboard.style.display = 'block';
-            leaveGameContainer.style.display = 'block';
-            updateScoreboard(data.scores, data.player_emojis);
-            window.switchToGameMusic();
-            if (data.current_player === username) {
-                topicSelection.style.display = 'block';
-                socket.emit('request_player_top_topics', { game_id: gameId, username: username });
+        socket.on('game_started', (data) => {
+            document.getElementById('waiting-state').style.display = 'none';
+            isDrawer = data.drawer === playerName;
+            if (isDrawer) {
+                document.getElementById('prompt-section').style.display = 'block';
+                document.getElementById('drawer-section').style.display = 'block';
+                document.getElementById('prompt-display').textContent = data.prompt;
             } else {
-                showWaitingForTopic(data.current_player);
+                document.getElementById('guesser-section').style.display = 'block';
             }
-        }
+            startTimer(data.round_duration);
+        });
 
-        function showWaitingForTopic(player) {
-            hideAllSections();
-            scoreboard.style.display = 'block';
-            const waitingDiv = document.createElement('div');
-            waitingDiv.id = 'waiting-for-topic';
-            waitingDiv.className = 'text-center my-4';
-            waitingDiv.innerHTML = `<h3>Waiting for ${player} to select a topic...</h3><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>`;
-            document.querySelector('.card-body').appendChild(waitingDiv);
-        }
+        socket.on('draw_update', (data) => {
+            viewerCtx.lineWidth = data.erase ? 20 : 5;
+            viewerCtx.lineCap = 'round';
+            viewerCtx.strokeStyle = data.erase ? '#FFFFFF' : data.color;
+            viewerCtx.lineTo(data.x, data.y);
+            viewerCtx.stroke();
+            viewerCtx.beginPath();
+            viewerCtx.moveTo(data.x, data.y);
+        });
 
-        function showLoadingQuestion() {
-            hideAllSections();
-            scoreboard.style.display = 'block';
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = 'loading-question';
-            loadingDiv.className = 'text-center my-4';
-            loadingDiv.innerHTML = `<h3>Generating Question...</h3><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>`;
-            document.querySelector('.card-body').appendChild(loadingDiv);
-        }
+        socket.on('canvas_cleared', () => {
+            viewerCtx.clearRect(0, 0, viewerCanvas.width, viewerCanvas.height);
+        });
 
-        function showQuestion(data) {
-            hideAllSections();
-            questionDisplay.style.display = 'block';
-            scoreboard.style.display = 'block';
-            currentTopic = data.topic;
-            currentQuestionId = data.question_id;
-            document.getElementById('topic-display').textContent = data.topic;
-            document.getElementById('question-text').textContent = data.question;
-            document.getElementById('option-a-text').textContent = data.options[0];
-            document.getElementById('option-b-text').textContent = data.options[1];
-            document.getElementById('option-c-text').textContent = data.options[2];
-            document.getElementById('option-d-text').textContent = data.options[3];
-            selectedAnswer = null;
-            document.querySelectorAll('.list-group-item').forEach(button => {
-                button.classList.remove('active', 'correct-answer', 'incorrect-answer');
-                button.disabled = false;
-            });
-            document.getElementById('submit-answer-btn').disabled = false;
-            waitingForAnswers.style.display = 'none';
-            answeredPlayers.clear();
-            document.getElementById('answered-players').innerHTML = '';
-            document.getElementById('answer-progress').style.width = '0%';
-            startTimer();
-        }
+        socket.on('guess_made', (data) => {
+            addChatMessage(data.player_name, data.guess);
+        });
 
-        function startTimer() {
-            timeLeft = 30;
-            timerProgress.style.width = '100%';
-            clearInterval(timerInterval);
-            timerInterval = setInterval(() => {
+        socket.on('correct_guess', (data) => {
+            document.getElementById('drawer-section').style.display = 'none';
+            document.getElementById('guesser-section').style.display = 'none';
+            document.getElementById('prompt-section').style.display = 'none';
+            document.getElementById('correct-guess').style.display = 'block';
+            document.getElementById('correct-guess').textContent = `${data.player_name} guessed it! The word was: ${data.prompt}`;
+            updateScoreboard(data.players, data.scores);
+            showNextRoundCountdown(data.next_round_in);
+        });
+
+        socket.on('round_ended', (data) => {
+            document.getElementById('drawer-section').style.display = 'none';
+            document.getElementById('guesser-section').style.display = 'none';
+            document.getElementById('prompt-section').style.display = 'none';
+            document.getElementById('correct-guess').style.display = 'block';
+            document.getElementById('correct-guess').textContent = `Time’s up! The word was: ${data.prompt}`;
+            updateScoreboard(data.players, data.scores);
+            showNextRoundCountdown(data.next_round_in);
+        });
+
+        socket.on('game_ended', (data) => {
+            window.location.href = `/final_scoreboard/${gameId}`;
+        });
+
+        // Timer
+        function startTimer(duration) {
+            let timeLeft = duration;
+            const timerBar = document.getElementById('round-timer');
+            const interval = setInterval(() => {
                 timeLeft--;
-                timerProgress.style.width = `${(timeLeft / 30) * 100}%`;
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    if (!selectedAnswer) {
-                        socket.emit('submit_answer', { game_id: gameId, username: username, answer: null });
-                    }
+                timerBar.style.width = (timeLeft / duration) * 100 + '%';
+                if (timeLeft <= 0) clearInterval(interval);
+            }, 1000);
+        }
+
+        // Next Round Countdown
+        function showNextRoundCountdown(seconds) {
+            document.getElementById('next-round-info').style.display = 'block';
+            let timeLeft = seconds;
+            const countdown = document.getElementById('countdown');
+            const interval = setInterval(() => {
+                countdown.textContent = timeLeft;
+                timeLeft--;
+                if (timeLeft < 0) {
+                    clearInterval(interval);
+                    document.getElementById('next-round-info').style.display = 'none';
+                    document.getElementById('correct-guess').style.display = 'none';
                 }
             }, 1000);
         }
 
-        function playerAnswered(playerName) {
-            const playerCount = document.getElementById('player-list').childElementCount;
-            if (playerCount > 1) {
-                answeredPlayers.add(playerName);
-                const answeredPlayersList = document.getElementById('answered-players');
-                answeredPlayersList.innerHTML = '';
-                answeredPlayers.forEach(player => {
-                    const li = document.createElement('li');
-                    li.className = 'list-group-item';
-                    li.innerHTML = `<span class="player-emoji">${playerEmojis[player]}</span>${player}`;
-                    answeredPlayersList.appendChild(li);
-                });
-                const progress = (answeredPlayers.size / playerCount) * 100;
-                document.getElementById('answer-progress').style.width = `${progress}%`;
-            }
-        }
-
-        function showResults(data) {
-            clearInterval(timerInterval);
-            hideAllSections();
-            resultsDisplay.style.display = 'block';
-            scoreboard.style.display = 'block';
-            window.playRoundEndSound();
-            document.getElementById('results-topic-display').textContent = currentTopic;
-            document.getElementById('results-question-text').textContent = document.getElementById('question-text').textContent;
-            document.getElementById('correct-answer').textContent = data.correct_answer;
-            document.getElementById('answer-explanation').textContent = data.explanation;
-            const playerAnswersList = document.getElementById('player-answers');
-            playerAnswersList.innerHTML = '';
-            Object.entries(data.player_answers).forEach(([player, answer]) => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item';
-                if (data.correct_players.includes(player)) {
-                    li.classList.add('correct-answer');
-                    if (player === username) window.playCorrectSound();
-                } else if (answer) {
-                    li.classList.add('incorrect-answer');
-                    if (player === username) window.playWrongSound();
-                }
-                if (player === username) li.className += ' fw-bold';
-                li.innerHTML = `<span class="player-emoji">${data.player_emojis[player]}</span>${player}: ${answer || 'No answer'}`;
-                playerAnswersList.appendChild(li);
-            });
-            document.getElementById('next-player').textContent = data.next_player;
-            updateScoreboard(data.scores, data.player_emojis);
-            startNextRoundCountdown(data.next_player);
-        }
-
-        function startNextRoundCountdown(nextPlayer) {
-            const progressBar = document.getElementById('next-round-progress');
-            progressBar.style.width = '0%';
-            progressBar.style.transition = 'width 10s linear';
-            setTimeout(() => progressBar.style.width = '100%', 100);
-            setTimeout(() => {
-                progressBar.style.transition = 'none';
-                progressBar.style.width = '0%';
-                hideAllSections();
-                scoreboard.style.display = 'block';
-                if (nextPlayer === username) {
-                    topicSelection.style.display = 'block';
-                    socket.emit('request_player_top_topics', { game_id: gameId, username: username });
-                } else {
-                    showWaitingForTopic(nextPlayer);
-                }
-            }, 10000);
-        }
-
-        function endGame(data) {
-            clearInterval(timerInterval);
-            hideAllSections();
-            window.location.href = `/final_scoreboard/${gameId}`;
-        }
-
-        function resetGame(data) {
-            clearInterval(timerInterval);
-            hideAllSections();
-            waitingLobby.style.display = 'block';
-            scoreboard.style.display = 'none';
-            leaveGameContainer.style.display = 'block';
-            startGameBtn.disabled = false;
-            startGameLoading.style.display = 'none';
-            window.switchToHomeMusic();
-            updatePlayerList(data.players, data.player_emojis);
-            updateScoreboard(data.scores, data.player_emojis);
-        }
-
-        function updateScoreboard(scores, emojis) {
-            playerEmojis = emojis;
-            const scoresTableBody = document.getElementById('scores-table-body');
-            scoresTableBody.innerHTML = '';
-            const sortedScores = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-            sortedScores.forEach(([player, score]) => {
-                const tr = document.createElement('tr');
-                if (player === username) tr.className = 'table-primary';
-                tr.innerHTML = `<td><span class="player-emoji">${playerEmojis[player]}</span>${player}</td><td>${score}</td>`;
-                scoresTableBody.appendChild(tr);
+        // Scoreboard Update
+        function updateScoreboard(players, scores) {
+            const tbody = document.getElementById('scoreboard-body');
+            tbody.innerHTML = '';
+            players.forEach(player => {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td><span class="player-emoji">🎨</span>${player}</td><td>${scores[player] || 0}</td>`;
+                tbody.appendChild(row);
             });
         }
 
-        function selectAnswer(answer) {
-            selectedAnswer = answer;
-            document.querySelectorAll('.list-group-item').forEach(button => button.classList.remove('active'));
-            document.getElementById(`option-${answer.toLowerCase()}`).classList.add('active');
-        }
-
-        function disableAnswerButtons() {
-            document.querySelectorAll('.list-group-item').forEach(button => button.disabled = true);
-        }
-
-        function addChatMessage(sender, message) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'chat-message';
-            messageDiv.innerHTML = `<span class="username">${sender}:</span> ${message}`;
-            chatMessages.appendChild(messageDiv);
+        // Chat Functions
+        function addChatMessage(username, message) {
+            const chatMessages = document.getElementById('chat-messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'chat-message';
+            msgDiv.innerHTML = `<span class="username">${username}:</span> <span class="message">${message}</span>`;
+            chatMessages.appendChild(msgDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        function updateUnreadCount(count) {
-            unreadCountBadge.textContent = count;
-            unreadCountBadge.style.display = count > 0 ? 'inline' : 'none';
-        }
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                const message = e.target.value.trim();
+                if (message) {
+                    socket.emit('chat_message', { game_id: gameId, player_name: playerName, message });
+                    e.target.value = '';
+                }
+            }
+        });
+
+        socket.on('chat_update', (data) => {
+            addChatMessage(data.player_name, data.message);
+        });
+
+        // Music Controls
+        const audio = new Audio('/static/music/background.mp3');
+        audio.loop = true;
+        document.getElementById('music-control-btn').addEventListener('click', () => {
+            document.getElementById('music-player').classList.toggle('active');
+        });
+        document.getElementById('play-music').addEventListener('click', () => audio.play());
+        document.getElementById('pause-music').addEventListener('click', () => audio.pause());
+        document.getElementById('mute-music').addEventListener('click', () => {
+            audio.muted = !audio.muted;
+            this.classList.toggle('btn-muted');
+        });
+
+        // Chat Toggle
+        document.getElementById('chat-control-btn').addEventListener('click', () => {
+            document.getElementById('chat-box').classList.toggle('active');
+        });
     </script>
-{% endblock %}
+</body>
+</html>
