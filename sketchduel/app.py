@@ -1,0 +1,157 @@
+from flask import Blueprint, render_template, request, redirect, url_for, session
+from ..app import db, socketio, genai, GEMINI_API_KEY
+from .models import SketchDuelRoom, SketchDuelGameState
+import random
+import string
+import json
+from datetime import datetime, timedelta
+
+# Initialize SketchDuel blueprint
+sketchduel_app = Blueprint('sketchduel', __name__, template_folder='templates', static_folder='../../static')
+
+def generate_room_code():
+    while True:
+        room_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        if not SketchDuelRoom.query.filter_by(room_code=room_code).first():
+            return room_code
+
+def generate_drawing_prompt():
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    prompt = """
+    As an expert in creative prompts, generate a simple, clear, and engaging drawing prompt suitable for a two-player sketching game. The prompt should:
+    - Be a single object, animal, or simple scene (e.g., "a cat", "a tree", "a bicycle").
+    - Avoid complex or abstract concepts that are hard to draw in 60 seconds.
+    - Be unique and not repetitive with common objects.
+
+    ### Response Format (JSON):
+    ```json
+    {
+      "prompt": "string"
+    }
+    """
+    response = model.generate_content(prompt)
+cleaned_text = response.text.strip().replace('json', '').replace('```', '').strip()
+try:
+prompt_data = json.loads(cleaned_text)
+if 'prompt' not in prompt_data or not prompt_data['prompt']:
+raise ValueError("Invalid prompt data")
+return prompt_data['prompt']
+except (json.JSONDecodeError, ValueError) as e:
+return "a random object"  # Fallback prompt
+
+@sketchduel_app.route('/lobby', methods=['GET', 'POST'])
+def lobby():
+if request.method == 'POST':
+room_code = generate_room_code()
+new_room = SketchDuelRoom(room_code=room_code, player1_id=session.get('player_id', 1))  # Using 1 as a placeholder player ID
+db.session.add(new_room)
+db.session.commit()
+session['room_code'] = room_code
+return redirect(url_for('sketchduel.game', room_code=room_code))
+return render_template('sketchduel/lobby.html')
+
+@sketchduel_app.route('/join/<room_code>', methods=['POST'])
+def join_room_route(room_code):
+room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+if not room or room.player2_id is not None:
+return render_template('sketchduel/lobby.html', error="Room not found or full")
+room.player2_id = session.get('player_id', 2)  # Using 2 as a placeholder player ID
+db.session.commit()
+session['room_code'] = room_code
+return redirect(url_for('sketchduel.game', room_code=room_code))
+
+@sketchduel_app.route('/game/<room_code>')
+def game(room_code):
+room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+if not room or (session.get('player_id') not in [room.player1_id, room.player2_id]):
+return redirect(url_for('sketchduel.lobby'))
+game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
+if not game_state:
+prompt = generate_drawing_prompt()
+game_state = SketchDuelGameState(room_id=room.id, prompt=prompt)
+db.session.add(game_state)
+db.session.commit()
+return render_template('sketchduel/game.html', room_code=room_code)
+
+@sketchduel_app.route('/scoreboard/<room_code>')
+def scoreboard(room_code):
+room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+if not room:
+return redirect(url_for('sketchduel.lobby'))
+return render_template('sketchduel/scoreboard.html', room_code=room_code, score_p1=room.score_p1, score_p2=room.score_p2)
+
+@socketio.on('connect', namespace='/sketchduel')
+def handle_sketchduel_connect():
+room_code = session.get('room_code')
+if room_code:
+join_room(room_code)
+emit('connected', {'message': 'Connected to SketchDuel room'}, room=room_code)
+
+@socketio.on('start_drawing', namespace='/sketchduel')
+def handle_start_drawing(data):
+room_code = data.get('room_code')
+room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+if not room:
+emit('error', {'message': 'Room not found'}, room=room_code)
+return
+game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
+if not game_state:
+emit('error', {'message': 'Game state not initialized'}, room=room_code)
+return
+game_state.is_drawing_phase = True
+game_state.time_left = 60
+room.current_drawer_id = room.player1_id if random.choice([True, False]) else room.player2_id
+db.session.commit()
+emit('drawing_started', {'prompt': game_state.prompt, 'drawer_id': room.current_drawer_id, 'time_left': game_state.time_left}, room=room_code)
+
+@socketio.on('update_drawing', namespace='/sketchduel')
+def handle_update_drawing(data):
+room_code = data.get('room_code')
+drawing_data = data.get('drawing_data')
+emit('drawing_update', {'drawing_data': drawing_data}, room=room_code, include_self=False)
+
+@socketio.on('submit_guess', namespace='/sketchduel')
+def handle_submit_guess(data):
+room_code = data.get('room_code')
+guess = data.get('guess')
+room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
+if not room or not game_state:
+emit('error', {'message': 'Invalid game state'}, room=room_code)
+return
+game_state.is_drawing_phase = False
+game_state.time_left = 30
+db.session.commit()
+if guess.lower() == game_state.prompt.lower():
+if room.current_drawer_id == room.player1_id:
+room.score_p1 += 1
+else:
+room.score_p2 += 1
+db.session.commit()
+emit('guess_submitted', {'guess': guess, 'correct': guess.lower() == game_state.prompt.lower(), 'score_p1': room.score_p1, 'score_p2': room.score_p2}, room=room_code)
+
+@socketio.on('update_timer', namespace='/sketchduel')
+def handle_update_timer(data):
+room_code = data.get('room_code')
+room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+if not room:
+return
+game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
+if game_state and game_state.time_left > 0:
+game_state.time_left -= 1
+db.session.commit()
+emit('timer_updated', {'time_left': game_state.time_left}, room=room_code)
+if game_state.time_left == 0:
+if game_state.is_drawing_phase:
+game_state.is_drawing_phase = False
+game_state.time_left = 30
+db.session.commit()
+emit('switch_to_guessing', {'message': 'Time to guess!'}, room=room_code)
+else:
+room.current_drawer_id = room.player2_id if room.current_drawer_id == room.player1_id else room.player1_id
+prompt = generate_drawing_prompt()
+game_state.prompt = prompt
+game_state.is_drawing_phase = True
+game_state.time_left = 60
+db.session.commit()
+emit('new_round', {'prompt': prompt, 'drawer_id': room.current_drawer_id, 'time_left': game_state.time_left}, room=room_code)
