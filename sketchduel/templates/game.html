@@ -51,16 +51,15 @@
 <script>
     const socket = io('/sketchduel');
     let isDrawing = false;
-    let currentDrawerId = null;
+    let currentDrawerUsername = null;
     let canvas = document.getElementById('drawingCanvas');
     let ctx = canvas.getContext('2d');
     let drawingData = [];
-    let history = []; // Stack for undo functionality
-    let currentColor = '#000000'; // Default to black in hex
-    let currentStroke = 5; // Default to Medium (5px)
+    let history = [];
+    let currentColor = '#000000';
+    let currentStroke = 5;
     let isErasing = false;
 
-    // Resize canvas to match its container
     function resizeCanvas() {
         canvas.height = canvas.offsetHeight;
         canvas.width = canvas.offsetWidth;
@@ -69,16 +68,15 @@
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    // Update color and stroke when selections change
     document.getElementById('colorPicker').addEventListener('input', (e) => {
         currentColor = e.target.value;
-        isErasing = false; // Disable eraser when changing color
+        isErasing = false;
         document.getElementById('eraserBtn').classList.remove('btn-primary');
     });
 
     document.getElementById('brushSize').addEventListener('change', (e) => {
         currentStroke = parseInt(e.target.value);
-        isErasing = false; // Disable eraser when changing brush size
+        isErasing = false;
         document.getElementById('eraserBtn').classList.remove('btn-primary');
     });
 
@@ -86,7 +84,7 @@
         isErasing = !isErasing;
         document.getElementById('eraserBtn').classList.toggle('btn-primary', isErasing);
         if (isErasing) {
-            currentColor = '#FFFFFF'; // White for erasing on a white background
+            currentColor = '#FFFFFF';
         } else {
             currentColor = document.getElementById('colorPicker').value;
         }
@@ -95,7 +93,7 @@
 
     document.getElementById('undoBtn').addEventListener('click', () => {
         if (history.length > 1) {
-            history.pop(); // Remove current state
+            history.pop();
             const previousState = history.pop();
             drawingData = previousState || [];
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -111,14 +109,13 @@
         socket.emit('update_drawing', { room_code: '{{ room_code }}', drawing_data: [] });
     });
 
-    // Canvas Drawing Logic
     canvas.addEventListener('mousedown', (e) => {
         isDrawing = true;
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         drawingData.push({ x, y, type: 'start', color: currentColor, stroke: currentStroke });
-        history.push([...drawingData]); // Save state for undo
+        history.push([...drawingData]);
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.strokeStyle = currentColor;
@@ -134,7 +131,7 @@
             ctx.lineTo(x, y);
             ctx.stroke();
             socket.emit('update_drawing', { room_code: '{{ room_code }}', drawing_data: drawingData });
-            history.push([...drawingData]); // Update history on each move
+            history.push([...drawingData]);
         }
     });
 
@@ -143,7 +140,6 @@
         ctx.beginPath();
     });
 
-    // Redraw canvas from drawing data
     function redrawCanvas() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.beginPath();
@@ -169,18 +165,17 @@
         });
     }
 
-    // SocketIO Events
     socket.on('connect', () => {
         console.log('Connected to SketchDuel namespace');
-        document.getElementById('tools').style.display = currentDrawerId == {{ session.get('player_id', 1) }} ? 'flex' : 'none'; // Show tools for drawer
+        document.getElementById('tools').style.display = currentDrawerUsername == '{{ session.get('username', '') }}' ? 'flex' : 'none';
     });
 
     socket.on('drawing_started', (data) => {
-        currentDrawerId = data.drawer_id;
-        document.getElementById('prompt').style.display = currentDrawerId == {{ session.get('player_id', 1) }} ? 'block' : 'none';
+        currentDrawerUsername = data.drawer_username;
+        document.getElementById('prompt').style.display = currentDrawerUsername == '{{ session.get('username', '') }}' ? 'block' : 'none';
         document.getElementById('promptText').textContent = data.prompt;
         document.getElementById('timeLeft').textContent = data.time_left;
-        document.getElementById('tools').style.display = currentDrawerId == {{ session.get('player_id', 1) }} ? 'flex' : 'none'; // Show tools for drawer
+        document.getElementById('tools').style.display = currentDrawerUsername == '{{ session.get('username', '') }}' ? 'flex' : 'none';
     });
 
     socket.on('drawing_update', (data) => {
@@ -190,7 +185,7 @@
 
     socket.on('switch_to_guessing', (data) => {
         document.getElementById('prompt').style.display = 'none';
-        document.getElementById('tools').style.display = 'none'; // Hide tools during guessing
+        document.getElementById('tools').style.display = 'none';
     });
 
     socket.on('guess_submitted', (data) => {
@@ -203,20 +198,19 @@
 
     socket.on('new_round', (data) => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        currentDrawerId = data.drawer_id;
-        document.getElementById('prompt').style.display = currentDrawerId == {{ session.get('player_id', 1) }} ? 'block' : 'none';
+        currentDrawerUsername = data.drawer_username;
+        document.getElementById('prompt').style.display = currentDrawerUsername == '{{ session.get('username', '') }}' ? 'block' : 'none';
         document.getElementById('promptText').textContent = data.prompt;
         document.getElementById('timeLeft').textContent = data.time_left;
         drawingData = [];
         history = [];
-        document.getElementById('tools').style.display = currentDrawerId == {{ session.get('player_id', 1) }} ? 'flex' : 'none'; // Show tools for new drawer
+        document.getElementById('tools').style.display = currentDrawerUsername == '{{ session.get('username', '') }}' ? 'flex' : 'none';
     });
 
     socket.on('timer_updated', (data) => {
         document.getElementById('timeLeft').textContent = data.time_left;
     });
 
-    // Handle redirect to scoreboard when game ends
     socket.on('redirect', (data) => {
         window.location.href = data.url;
     });
@@ -229,7 +223,6 @@
         }
     });
 
-    // Start the game
     socket.emit('start_drawing', { room_code: '{{ room_code }}' });
 </script>
 {% endblock %}
