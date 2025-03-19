@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
-from app import db, socketio, genai, GEMINI_API_KEY  # Absolute import
+from app import db, socketio, genai, GEMINI_API_KEY
 from .models import SketchDuelRoom, SketchDuelGameState
 import random
 import string
@@ -48,11 +48,25 @@ def generate_drawing_prompt():
     ]
     return random.choice(prompts)
 
+def cleanup_inactive_rooms():
+    """Delete rooms inactive for more than 30 minutes."""
+    thirty_minutes_ago = datetime.utcnow() - timedelta(minutes=30)
+    inactive_rooms = SketchDuelRoom.query.filter(SketchDuelRoom.last_activity < thirty_minutes_ago).all()
+    for room in inactive_rooms:
+        SketchDuelGameState.query.filter_by(room_id=room.id).delete()
+        db.session.delete(room)
+    db.session.commit()
+
 @sketchduel_app.route('/lobby', methods=['GET', 'POST'])
 def lobby():
+    cleanup_inactive_rooms()  # Clean up inactive rooms on each lobby access
     if request.method == 'POST':
+        username = request.form.get('username')
+        if not username or len(username) > 50:
+            return render_template('sketchduel/lobby.html', error="Please enter a valid username (max 50 characters).")
+        session['username'] = username
         room_code = generate_room_code()
-        new_room = SketchDuelRoom(room_code=room_code, player1_id=session.get('player_id', 1))  # Using 1 as a placeholder player ID
+        new_room = SketchDuelRoom(room_code=room_code, player1_username=username, last_activity=datetime.utcnow())
         db.session.add(new_room)
         db.session.commit()
         session['room_code'] = room_code
@@ -61,19 +75,27 @@ def lobby():
 
 @sketchduel_app.route('/join/<room_code>', methods=['POST'])
 def join_room_route(room_code):
+    cleanup_inactive_rooms()  # Clean up inactive rooms on each join attempt
+    username = request.form.get('username')
+    if not username or len(username) > 50:
+        return render_template('sketchduel/lobby.html', error="Please enter a valid username (max 50 characters).")
     room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
-    if not room or room.player2_id is not None:
+    if not room or room.player2_username is not None:
         return render_template('sketchduel/lobby.html', error="Room not found or full")
-    room.player2_id = session.get('player_id', 2)  # Using 2 as a placeholder player ID
+    room.player2_username = username
+    room.last_activity = datetime.utcnow()
     db.session.commit()
+    session['username'] = username
     session['room_code'] = room_code
     return redirect(url_for('sketchduel.game', room_code=room_code))
 
 @sketchduel_app.route('/game/<room_code>')
 def game(room_code):
     room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
-    if not room or (session.get('player_id') not in [room.player1_id, room.player2_id]):
+    if not room or (session.get('username') not in [room.player1_username, room.player2_username]):
         return redirect(url_for('sketchduel.lobby'))
+    room.last_activity = datetime.utcnow()  # Update last activity
+    db.session.commit()
     game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
     if not game_state:
         prompt = generate_drawing_prompt()
@@ -103,20 +125,26 @@ def handle_start_drawing(data):
     if not room:
         emit('error', {'message': 'Room not found'}, room=room_code)
         return
+    room.last_activity = datetime.utcnow()  # Update last activity
+    db.session.commit()
     game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
     if not game_state:
         emit('error', {'message': 'Game state not initialized'}, room=room_code)
         return
     game_state.is_drawing_phase = True
     game_state.time_left = 60
-    room.current_drawer_id = room.player1_id if random.choice([True, False]) else room.player2_id
+    room.current_drawer_username = room.player1_username if random.choice([True, False]) else room.player2_username
     db.session.commit()
-    emit('drawing_started', {'prompt': game_state.prompt, 'drawer_id': room.current_drawer_id, 'time_left': game_state.time_left}, room=room_code)
+    emit('drawing_started', {'prompt': game_state.prompt, 'drawer_username': room.current_drawer_username, 'time_left': game_state.time_left}, room=room_code)
 
 @socketio.on('update_drawing', namespace='/sketchduel')
 def handle_update_drawing(data):
     room_code = data.get('room_code')
     drawing_data = data.get('drawing_data')
+    room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
+    if room:
+        room.last_activity = datetime.utcnow()  # Update last activity
+        db.session.commit()
     emit('drawing_update', {'drawing_data': drawing_data}, room=room_code, include_self=False)
 
 @socketio.on('submit_guess', namespace='/sketchduel')
@@ -128,11 +156,12 @@ def handle_submit_guess(data):
     if not room or not game_state:
         emit('error', {'message': 'Invalid game state'}, room=room_code)
         return
+    room.last_activity = datetime.utcnow()  # Update last activity
     game_state.is_drawing_phase = False
     game_state.time_left = 30
     db.session.commit()
     if guess.lower() == game_state.prompt.lower():
-        if room.current_drawer_id == room.player1_id:
+        if room.current_drawer_username == room.player1_username:
             room.score_p1 += 1
         else:
             room.score_p2 += 1
@@ -148,6 +177,7 @@ def handle_update_timer(data):
     room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
     if not room:
         return
+    room.last_activity = datetime.utcnow()  # Update last activity
     game_state = SketchDuelGameState.query.filter_by(room_id=room.id).first()
     if game_state and game_state.time_left > 0:
         game_state.time_left -= 1
@@ -160,13 +190,13 @@ def handle_update_timer(data):
                 db.session.commit()
                 emit('switch_to_guessing', {'message': 'Time to guess!'}, room=room_code)
             else:
-                room.current_drawer_id = room.player2_id if room.current_drawer_id == room.player1_id else room.player1_id
+                room.current_drawer_username = room.player2_username if room.current_drawer_username == room.player1_username else room.player1_username
                 prompt = generate_drawing_prompt()
                 game_state.prompt = prompt
                 game_state.is_drawing_phase = True
                 game_state.time_left = 60
                 db.session.commit()
-                emit('new_round', {'prompt': prompt, 'drawer_id': room.current_drawer_id, 'time_left': game_state.time_left}, room=room_code)
+                emit('new_round', {'prompt': prompt, 'drawer_username': room.current_drawer_username, 'time_left': game_state.time_left}, room=room_code)
     # Check win condition after each timer update
     if room.score_p1 >= 5 or room.score_p2 >= 5:
         emit('game_ended', {'room_code': room_code}, room=room_code)
