@@ -73,7 +73,7 @@ p, .form-label {
 }
 
 /* Input Placeholder Styling */
-#topic-input::placeholder {
+#guess-input::placeholder {
     font-size: 0.8rem;
     color: #A0A0A0;
     opacity: 0.8;
@@ -130,47 +130,52 @@ p, .form-label {
     box-shadow: 0 0 4px rgba(0, 255, 255, 0.5);
 }
 
-/* List Group Items (Multiple Choice) */
-.list-group-item {
-    cursor: pointer;
-    transition: background-color 0.2s ease-in-out;
-    background-color: #5A3F73;
-    color: #F5F5F5;
-    border: 1px solid #FF69B4;
-    padding: 0.8rem;
-    margin-bottom: 0.4rem;
+/* Drawing Canvas */
+#drawing-canvas {
+    background-color: #FFFFFF;
+    border: 2px solid #FF69B4;
+    border-radius: 8px;
+    width: 100%;
+    height: 300px;
+    margin-bottom: 0.8rem;
+    box-shadow: 0 0 8px rgba(255, 105, 180, 0.2);
+    touch-action: none; /* Prevent scrolling while drawing on mobile */
+}
+
+/* Drawing Tools */
+.drawing-tools {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 0.8rem;
+}
+
+.drawing-tools .btn {
+    padding: 0.4rem;
     font-size: 0.9rem;
-    text-align: left;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.list-group-item::before {
-    content: attr(data-prefix);
-    font-weight: bold;
-    margin-right: 0.4rem;
-    color: #00FFFF;
+/* Guess Input Area */
+.guess-section {
+    margin-bottom: 0.8rem;
 }
 
-.list-group-item span {
-    font-weight: normal;
-}
-
-.list-group-item.active {
-    background-color: #4B2E5A;
-    border: 2px solid #00FFFF;
+.guess-section .form-control {
+    background-color: #6A4F83;
+    border: 1px solid #FF69B4;
     color: #F5F5F5;
-    font-weight: 500;
-    box-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+    border-radius: 4px;
 }
 
-.list-group-item:hover:not(.active) {
-    background-color: #6A4F83;
-}
-
-.list-group-item.disabled {
-    cursor: not-allowed;
-    background-color: #6A4F83;
-    color: #6B705C;
-    opacity: 0.65;
+.guess-section .form-control:focus {
+    border-color: #00FFFF;
+    box-shadow: 0 0 4px rgba(0, 255, 255, 0.5);
 }
 
 /* Scoreboard */
@@ -207,14 +212,13 @@ p, .form-label {
     h2, h3 {
         font-size: 1.2rem;
     }
-    .list-group-item {
-        font-size: 0.95rem;
-        padding: 1rem;
+    #drawing-canvas {
+        height: 400px;
     }
 }
 
 /* Specific Adjustments */
-#topic-display {
+#prompt-display {
     font-size: 0.9rem;
     padding: 0.3rem 0.6rem;
     background-color: #FF69B4;
@@ -227,7 +231,7 @@ p, .form-label {
     margin-bottom: 0.4rem;
 }
 
-#correct-answer {
+#correct-guess {
     font-weight: bold;
     color: #FF69B4;
     font-size: 1rem;
@@ -235,14 +239,7 @@ p, .form-label {
     text-shadow: 0 0 4px rgba(255, 105, 180, 0.5);
 }
 
-#answer-explanation {
-    color: #F5F5F5;
-    font-style: italic;
-    text-align: center;
-    font-size: 0.85rem;
-}
-
-.waiting-for-answers {
+.waiting-for-guess {
     text-align: center;
     padding: 0.8rem;
     border-radius: 4px;
@@ -338,7 +335,7 @@ p, .form-label {
 .chat-control-btn {
     position: fixed;
     bottom: 10px;
-    right: 55px; /* Positioned to the left of music button */
+    right: 55px;
     width: 35px;
     height: 35px;
     background-color: #FF69B4;
@@ -433,7 +430,7 @@ p, .form-label {
         padding: 0.3rem;
         font-size: 0.8rem;
     }
-    #topic-display {
+    #prompt-display {
         font-size: 0.85rem;
         padding: 0.2rem 0.5rem;
     }
@@ -441,7 +438,7 @@ p, .form-label {
         width: 30px;
         height: 30px;
         font-size: 0.9rem;
-        right: 50px; /* Adjusted for mobile */
+        right: 50px;
     }
     .chat-box {
         width: 200px;
@@ -450,6 +447,9 @@ p, .form-label {
     }
     .chat-messages {
         max-height: 120px;
+    }
+    #drawing-canvas {
+        height: 250px;
     }
 }
 
@@ -476,22 +476,10 @@ p, .form-label {
     cursor: not-allowed;
 }
 
-/* Additional Styles for AI Trivia Game */
-.list-group-item.active {
-    background-color: #4B2E5A;
-    border: 2px solid #00FFFF;
-    color: #F5F5F5;
-}
-
-.correct-answer {
-    background-color: #00CC00; /* More opaque green */
-    color: #2C1A3B; /* Darker text for contrast */
-    font-weight: 600; /* Slightly bolder for emphasis */
-}
-
-.incorrect-answer {
-    background-color: #CC0000; /* More opaque red */
-    color: #F5F5F5; /* Keep white text, but ensure it pops */
+/* Additional Styles for SketchDuel */
+.correct-guess {
+    background-color: #00CC00;
+    color: #2C1A3B;
     font-weight: 600;
 }
 
@@ -542,7 +530,7 @@ p, .form-label {
     color: #FF69B4;
 }
 
-/* Fix for Player Answers Header */
+/* Fix for Player Guesses Header */
 .card-header.bg-light {
     background-color: #4B2E5A !important;
     color: #F5F5F5 !important;
