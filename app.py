@@ -26,11 +26,6 @@ def generate_game_id():
 def get_drawing_prompt():
     return random.choice(DRAWING_PROMPTS)
 
-# Create database tables before first request
-@app.before_first_request
-def create_tables():
-    db.create_all()
-
 @app.route('/')
 def index():
     return render_template('index.html', error=None)
