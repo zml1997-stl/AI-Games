@@ -1,12 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from app import db, socketio, genai, GEMINI_API_KEY
+from app.models import SketchDuelRoom, SketchDuelGameState  # Added import
 import random
 import string
 import json
 from datetime import datetime, timedelta
 
 # Initialize SketchDuel blueprint
-# Update template_folder to point to sketchduel/templates/
 sketchduel_app = Blueprint('sketchduel', __name__, template_folder='templates', static_folder='static')
 
 def generate_room_code():
