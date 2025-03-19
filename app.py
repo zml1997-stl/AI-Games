@@ -4,17 +4,19 @@ from flask_sqlalchemy import SQLAlchemy
 import random
 import string
 import time
+import os
 from datetime import datetime
 from models import db, Game, Player, Round, Guess  # Import from models.py
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'  # Replace with a secure key
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///sketchduel.db'  # SQLite for simplicity; adjust as needed
+# Use Heroku's DATABASE_URL or fallback to SQLite locally
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///sketchduel.db').replace('postgres://', 'postgresql://')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)  # Initialize the database
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Drawing prompts (could be moved to a database table later)
+# Drawing prompts
 DRAWING_PROMPTS = [
     "cat", "house", "tree", "car", "dog", "sun", "moon", "star", "flower", "boat",
     "apple", "pizza", "guitar", "bird", "fish", "mountain", "cloud", "chair", "hat", "rocket"
@@ -25,6 +27,11 @@ def generate_game_id():
 
 def get_drawing_prompt():
     return random.choice(DRAWING_PROMPTS)
+
+# Create tables if they don't exist (runs on app startup)
+with app.app_context():
+    db.create_all()
+    print("Tables created successfully!")  # This will log to Heroku logs
 
 @app.route('/')
 def index():
