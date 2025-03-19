@@ -1,13 +1,13 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from app import db, socketio, genai, GEMINI_API_KEY
-from .models import SketchDuelRoom, SketchDuelGameState
 import random
 import string
 import json
 from datetime import datetime, timedelta
 
 # Initialize SketchDuel blueprint
-sketchduel_app = Blueprint('sketchduel', __name__, template_folder='templates', static_folder='../../static')
+# Update template_folder to point to sketchduel/templates/
+sketchduel_app = Blueprint('sketchduel', __name__, template_folder='templates', static_folder='static')
 
 def generate_room_code():
     while True:
@@ -63,7 +63,7 @@ def lobby():
     if request.method == 'POST':
         username = request.form.get('username')
         if not username or len(username) > 50:
-            return render_template('sketchduel/lobby.html', error="Please enter a valid username (max 50 characters).")
+            return render_template('lobby.html', error="Please enter a valid username (max 50 characters).")
         session['username'] = username
         room_code = generate_room_code()
         new_room = SketchDuelRoom(room_code=room_code, player1_username=username, last_activity=datetime.utcnow())
@@ -71,17 +71,17 @@ def lobby():
         db.session.commit()
         session['room_code'] = room_code
         return redirect(url_for('sketchduel.game', room_code=room_code))
-    return render_template('sketchduel/lobby.html')
+    return render_template('lobby.html')
 
 @sketchduel_app.route('/join/<room_code>', methods=['POST'])
 def join_room_route(room_code):
     cleanup_inactive_rooms()  # Clean up inactive rooms on each join attempt
     username = request.form.get('username')
     if not username or len(username) > 50:
-        return render_template('sketchduel/lobby.html', error="Please enter a valid username (max 50 characters).")
+        return render_template('lobby.html', error="Please enter a valid username (max 50 characters).")
     room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
     if not room or room.player2_username is not None:
-        return render_template('sketchduel/lobby.html', error="Room not found or full")
+        return render_template('lobby.html', error="Room not found or full")
     room.player2_username = username
     room.last_activity = datetime.utcnow()
     db.session.commit()
@@ -102,14 +102,14 @@ def game(room_code):
         game_state = SketchDuelGameState(room_id=room.id, prompt=prompt)
         db.session.add(game_state)
         db.session.commit()
-    return render_template('sketchduel/game.html', room_code=room_code)
+    return render_template('game.html')
 
 @sketchduel_app.route('/scoreboard/<room_code>')
 def scoreboard(room_code):
     room = SketchDuelRoom.query.filter_by(room_code=room_code).first()
     if not room:
         return redirect(url_for('sketchduel.lobby'))
-    return render_template('sketchduel/scoreboard.html', room_code=room_code, score_p1=room.score_p1, score_p2=room.score_p2)
+    return render_template('scoreboard.html', room_code=room_code, score_p1=room.score_p1, score_p2=room.score_p2)
 
 @socketio.on('connect', namespace='/sketchduel')
 def handle_sketchduel_connect():
